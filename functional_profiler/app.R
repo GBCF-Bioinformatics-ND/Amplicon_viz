@@ -1,32 +1,28 @@
-required_pkgs <- c("shiny", "phyloseq", "ggplot2", "vegan")
-optional_pkgs <- c("DESeq2", "ggpicrust2", "ALDEx2", "edgeR", "limma")
+# Created by: Bharat Mishra
+# Edited by: Elizabeth Brooks
+# Modified: 15 June 2026
 
-missing_required <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
-if (length(missing_required) > 0) {
-  stop(
-    paste0(
-      "Missing required packages: ",
-      paste(missing_required, collapse = ", "),
-      "\nInstall CRAN packages with install.packages(...).",
-      "\nInstall Bioconductor packages with BiocManager::install(...)."
-    ),
-    call. = FALSE
-  )
+# install any missing packages
+options(repos = c(CRAN = "https://cloud.r-project.org/"))
+#biocList <- c("phyloseq", "ALDEx2", "DESeq2 "edgeR", "limma")
+biocList <- c("phyloseq")
+packageList <- c("shiny", "ggplot2", "vegan", "ggpicrust2")
+                 #"matrixStats", "abind", "truncnorm", "png", "jpeg")
+newBioc <- biocList[!(biocList %in% installed.packages()[,"Package"])]
+newPackages <- packageList[!(packageList %in% installed.packages()[,"Package"])]
+if(length(newBioc)){
+  install.packages("BiocManager")
+  BiocManager::install(newBioc)
 }
-
-missing_optional <- optional_pkgs[!vapply(optional_pkgs, requireNamespace, logical(1), quietly = TRUE)]
-if (length(missing_optional) > 0) {
-  message(
-    "Optional packages not installed (some features may be unavailable): ",
-    paste(missing_optional, collapse = ", ")
-  )
+if(length(newPackages)){
+  install.packages(newPackages)
 }
-
 suppressPackageStartupMessages({
   library(shiny)
   library(phyloseq)
   library(ggplot2)
   library(vegan)
+  library(ggpicrust2)
 })
 
 options(shiny.maxRequestSize = 500 * 1024^2)
@@ -466,7 +462,8 @@ analysis_help_block <- function(title, bullets) {
 }
 
 app_ui <- fluidPage(
-  titlePanel("Functional Profiler: DESeq2 & PICRUSt2"),
+  #titlePanel("Functional Profiler: DESeq2 & PICRUSt2"),
+  titlePanel("Functional Profiler: PICRUSt2"),
   sidebarLayout(
     sidebarPanel(
       width = 3,
@@ -578,33 +575,33 @@ app_ui <- fluidPage(
           tableOutput("taxonomy_table"),
           downloadButton("download_taxonomy_table", "Download taxonomy table")
         ),
-        tabPanel(
-          "Differential abundance",
-          tags$br(),
-          analysis_help_block(
-            "How to read differential abundance",
-            list(
-              "This analysis tests whether taxa differ in abundance between two groups.",
-              "Log2 fold change shows the direction and size of the difference between the comparison group and the reference group.",
-              "Positive values mean higher abundance in the comparison group; negative values mean higher abundance in the reference group.",
-              "The volcano plot combines effect size and statistical evidence.",
-              "Focus on taxa with both meaningful fold change and low adjusted p-value."
-            )
-          ),
-          uiOutput("da_var_ui"),
-          fluidRow(
-            column(6, uiOutput("da_ref_level_ui")),
-            column(6, uiOutput("da_comp_level_ui"))
-          ),
-          actionButton("run_deseq", "Run DESeq2"),
-          tags$br(),
-          tags$br(),
-          verbatimTextOutput("deseq_status"),
-          tableOutput("deseq_table"),
-          plotOutput("volcano_plot", height = 440),
-          downloadButton("download_deseq_table", "Download DESeq2 table"),
-          downloadButton("download_volcano_plot", "Download volcano plot")
-        ),
+        # tabPanel(
+        #   "Differential abundance",
+        #   tags$br(),
+        #   analysis_help_block(
+        #     "How to read differential abundance",
+        #     list(
+        #       "This analysis tests whether taxa differ in abundance between two groups.",
+        #       "Log2 fold change shows the direction and size of the difference between the comparison group and the reference group.",
+        #       "Positive values mean higher abundance in the comparison group; negative values mean higher abundance in the reference group.",
+        #       "The volcano plot combines effect size and statistical evidence.",
+        #       "Focus on taxa with both meaningful fold change and low adjusted p-value."
+        #     )
+        #   ),
+        #   uiOutput("da_var_ui"),
+        #   fluidRow(
+        #     column(6, uiOutput("da_ref_level_ui")),
+        #     column(6, uiOutput("da_comp_level_ui"))
+        #   ),
+        #   actionButton("run_deseq", "Run DESeq2"),
+        #   tags$br(),
+        #   tags$br(),
+        #   verbatimTextOutput("deseq_status"),
+        #   tableOutput("deseq_table"),
+        #   plotOutput("volcano_plot", height = 440),
+        #   downloadButton("download_deseq_table", "Download DESeq2 table"),
+        #   downloadButton("download_volcano_plot", "Download volcano plot")
+        # ),
         tabPanel(
           "ggpicrust2",
           tags$br(),
@@ -627,7 +624,8 @@ app_ui <- fluidPage(
               selectInput(
                 "picrust_daa_method",
                 "DAA method",
-                choices = c("LinDA", "ALDEx2", "DESeq2", "edgeR"),
+                #choices = c("LinDA", "ALDEx2", "DESeq2", "edgeR"),
+                choices = c("LinDA", "ALDEx2", "edgeR"),
                 selected = "LinDA"
               )
             ),
@@ -1014,9 +1012,9 @@ app_server <- function(input, output, session) {
       selectInput("core_tax_rank", "Core microbiome label rank", choices = rank_cols, selected = if ("Genus" %in% rank_cols) "Genus" else rank_cols[1])
     })
 
-    output$da_var_ui <- renderUI({
-      selectInput("da_var", "Model variable", choices = meta_cols, selected = meta_cols[1])
-    })
+    # output$da_var_ui <- renderUI({
+    #   selectInput("da_var", "Model variable", choices = meta_cols, selected = meta_cols[1])
+    # })
 
     output$picrust_group_var_ui <- renderUI({
       selectInput("picrust_group_var", "ggpicrust2 group variable", choices = meta_cols, selected = preferred_group)
@@ -1036,24 +1034,24 @@ app_server <- function(input, output, session) {
     meta_df <- as(sample_data(ps_obj()), "data.frame")
     req(input$da_var %in% colnames(meta_df))
 
-    levs <- unique(as.character(meta_df[[input$da_var]]))
-    levs <- levs[!is.na(levs) & levs != ""]
-    if (length(levs) < 2) {
-      output$da_ref_level_ui <- renderUI({
-        helpText("Selected variable has fewer than 2 non-empty levels.")
-      })
-      output$da_comp_level_ui <- renderUI({
-        helpText("")
-      })
-      return()
-    }
-
-    output$da_ref_level_ui <- renderUI({
-      selectInput("da_ref_level", "Reference level", choices = levs, selected = levs[1])
-    })
-    output$da_comp_level_ui <- renderUI({
-      selectInput("da_comp_level", "Comparison level", choices = levs, selected = levs[2])
-    })
+    # levs <- unique(as.character(meta_df[[input$da_var]]))
+    # levs <- levs[!is.na(levs) & levs != ""]
+    # if (length(levs) < 2) {
+    #   output$da_ref_level_ui <- renderUI({
+    #     helpText("Selected variable has fewer than 2 non-empty levels.")
+    #   })
+    #   output$da_comp_level_ui <- renderUI({
+    #     helpText("")
+    #   })
+    #   return()
+    # }
+    # 
+    # output$da_ref_level_ui <- renderUI({
+    #   selectInput("da_ref_level", "Reference level", choices = levs, selected = levs[1])
+    # })
+    # output$da_comp_level_ui <- renderUI({
+    #   selectInput("da_comp_level", "Comparison level", choices = levs, selected = levs[2])
+    # })
   })
 
 
@@ -1081,42 +1079,42 @@ app_server <- function(input, output, session) {
 
 
 
-  deseq_results <- eventReactive(input$run_deseq, {
-    if (!requireNamespace("DESeq2", quietly = TRUE)) {
-      stop("Package DESeq2 is not installed.")
-    }
-
-    req(input$da_var, input$da_ref_level, input$da_comp_level)
-    if (identical(input$da_ref_level, input$da_comp_level)) {
-      stop("Reference and comparison levels must be different.")
-    }
-
-    ps <- ps_obj()
-    meta_df <- as(sample_data(ps), "data.frame")
-    req(input$da_var %in% colnames(meta_df))
-
-    keep_samples <- rownames(meta_df)[as.character(meta_df[[input$da_var]]) %in% c(input$da_ref_level, input$da_comp_level)]
-    ps_sub <- prune_samples(keep_samples, ps)
-    meta_sub <- as(sample_data(ps_sub), "data.frame")
-    meta_sub[[input$da_var]] <- factor(as.character(meta_sub[[input$da_var]]), levels = c(input$da_ref_level, input$da_comp_level))
-    sample_data(ps_sub) <- sample_data(meta_sub)
-
-    dds <- phyloseq_to_deseq2(ps_sub, stats::as.formula(paste("~", input$da_var)))
-    dds <- DESeq2::DESeq(dds, fitType = "parametric", quiet = TRUE)
-    res <- DESeq2::results(dds, contrast = c(input$da_var, input$da_comp_level, input$da_ref_level))
-
-    res_df <- as.data.frame(res)
-    res_df$Taxon <- rownames(res_df)
-
-    if (!is.null(tax_table(ps_sub, errorIfNULL = FALSE))) {
-      tax_df <- as.data.frame(tax_table(ps_sub), stringsAsFactors = FALSE)
-      tax_df$Taxon <- rownames(tax_df)
-      res_df <- merge(res_df, tax_df, by = "Taxon", all.x = TRUE, sort = FALSE)
-    }
-
-    res_df <- res_df[order(res_df$padj, na.last = TRUE), ]
-    res_df
-  })
+  # deseq_results <- eventReactive(input$run_deseq, {
+  #   if (!requireNamespace("DESeq2", quietly = TRUE)) {
+  #     stop("Package DESeq2 is not installed.")
+  #   }
+  # 
+  #   req(input$da_var, input$da_ref_level, input$da_comp_level)
+  #   if (identical(input$da_ref_level, input$da_comp_level)) {
+  #     stop("Reference and comparison levels must be different.")
+  #   }
+  # 
+  #   ps <- ps_obj()
+  #   meta_df <- as(sample_data(ps), "data.frame")
+  #   req(input$da_var %in% colnames(meta_df))
+  # 
+  #   keep_samples <- rownames(meta_df)[as.character(meta_df[[input$da_var]]) %in% c(input$da_ref_level, input$da_comp_level)]
+  #   ps_sub <- prune_samples(keep_samples, ps)
+  #   meta_sub <- as(sample_data(ps_sub), "data.frame")
+  #   meta_sub[[input$da_var]] <- factor(as.character(meta_sub[[input$da_var]]), levels = c(input$da_ref_level, input$da_comp_level))
+  #   sample_data(ps_sub) <- sample_data(meta_sub)
+  # 
+  #   dds <- phyloseq_to_deseq2(ps_sub, stats::as.formula(paste("~", input$da_var)))
+  #   dds <- DESeq2::DESeq(dds, fitType = "parametric", quiet = TRUE)
+  #   res <- DESeq2::results(dds, contrast = c(input$da_var, input$da_comp_level, input$da_ref_level))
+  # 
+  #   res_df <- as.data.frame(res)
+  #   res_df$Taxon <- rownames(res_df)
+  # 
+  #   if (!is.null(tax_table(ps_sub, errorIfNULL = FALSE))) {
+  #     tax_df <- as.data.frame(tax_table(ps_sub), stringsAsFactors = FALSE)
+  #     tax_df$Taxon <- rownames(tax_df)
+  #     res_df <- merge(res_df, tax_df, by = "Taxon", all.x = TRUE, sort = FALSE)
+  #   }
+  # 
+  #   res_df <- res_df[order(res_df$padj, na.last = TRUE), ]
+  #   res_df
+  # })
 
   picrust_base_results <- eventReactive(input$run_picrust, {
     if (!requireNamespace("ggpicrust2", quietly = TRUE)) {
@@ -1441,13 +1439,13 @@ app_server <- function(input, output, session) {
     selectInput("picrust_contrast", "Contrast to plot", choices = choices, selected = selected_val)
   })
 
-  output$deseq_status <- renderPrint({
-    if (!requireNamespace("DESeq2", quietly = TRUE)) {
-      cat("DESeq2 package is not installed. Install with BiocManager::install('DESeq2').\n")
-      return(invisible(NULL))
-    }
-    cat("Ready. Choose variable and levels, then click Run DESeq2.\n")
-  })
+  # output$deseq_status <- renderPrint({
+  #   if (!requireNamespace("DESeq2", quietly = TRUE)) {
+  #     cat("DESeq2 package is not installed. Install with BiocManager::install('DESeq2').\n")
+  #     return(invisible(NULL))
+  #   }
+  #   cat("Ready. Choose variable and levels, then click Run DESeq2.\n")
+  # })
 
   output$picrust_status <- renderPrint({
     if (!requireNamespace("ggpicrust2", quietly = TRUE)) {
@@ -1480,29 +1478,29 @@ app_server <- function(input, output, session) {
     }
   })
 
-  output$deseq_table <- renderTable({
-    req(input$run_deseq > 0)
-    head(deseq_results(), 25)
-  }, rownames = FALSE)
-
-  output$volcano_plot <- renderPlot({
-    req(input$run_deseq > 0)
-    res_df <- deseq_results()
-    req(nrow(res_df) > 0)
-
-    res_df$significant <- ifelse(!is.na(res_df$padj) & res_df$padj < 0.05, "FDR < 0.05", "NS")
-
-    ggplot(res_df, aes(x = log2FoldChange, y = -log10(padj), color = significant)) +
-      geom_point(alpha = 0.7) +
-      scale_color_manual(values = c("FDR < 0.05" = "red", "NS" = "grey50")) +
-      theme_bw(base_size = 12) +
-      labs(
-        title = "Differential abundance volcano plot",
-        x = paste0("log2 fold change (", input$da_comp_level, " vs ", input$da_ref_level, ")"),
-        y = "-log10 adjusted p-value",
-        color = "Significance"
-      )
-  })
+  # output$deseq_table <- renderTable({
+  #   req(input$run_deseq > 0)
+  #   head(deseq_results(), 25)
+  # }, rownames = FALSE)
+  # 
+  # output$volcano_plot <- renderPlot({
+  #   req(input$run_deseq > 0)
+  #   res_df <- deseq_results()
+  #   req(nrow(res_df) > 0)
+  # 
+  #   res_df$significant <- ifelse(!is.na(res_df$padj) & res_df$padj < 0.05, "FDR < 0.05", "NS")
+  # 
+  #   ggplot(res_df, aes(x = log2FoldChange, y = -log10(padj), color = significant)) +
+  #     geom_point(alpha = 0.7) +
+  #     scale_color_manual(values = c("FDR < 0.05" = "red", "NS" = "grey50")) +
+  #     theme_bw(base_size = 12) +
+  #     labs(
+  #       title = "Differential abundance volcano plot",
+  #       x = paste0("log2 fold change (", input$da_comp_level, " vs ", input$da_ref_level, ")"),
+  #       y = "-log10 adjusted p-value",
+  #       color = "Significance"
+  #     )
+  # })
 
   output$picrust_table <- renderTable({
     req(input$run_picrust > 0)
@@ -1527,27 +1525,27 @@ app_server <- function(input, output, session) {
 
 
 
-  volcano_plot_obj <- reactive({
-    req(input$run_deseq > 0)
-    res_df <- deseq_results()
-    req(nrow(res_df) > 0)
-    res_df$significant <- ifelse(!is.na(res_df$padj) & res_df$padj < 0.05, "FDR < 0.05", "NS")
+  # volcano_plot_obj <- reactive({
+  #   req(input$run_deseq > 0)
+  #   res_df <- deseq_results()
+  #   req(nrow(res_df) > 0)
+  #   res_df$significant <- ifelse(!is.na(res_df$padj) & res_df$padj < 0.05, "FDR < 0.05", "NS")
+  # 
+  #   ggplot(res_df, aes(x = log2FoldChange, y = -log10(padj), color = significant)) +
+  #     geom_point(alpha = 0.7) +
+  #     scale_color_manual(values = c("FDR < 0.05" = "red", "NS" = "grey50")) +
+  #     theme_bw(base_size = 12) +
+  #     labs(
+  #       title = "Differential abundance volcano plot",
+  #       x = paste0("log2 fold change (", input$da_comp_level, " vs ", input$da_ref_level, ")"),
+  #       y = "-log10 adjusted p-value",
+  #       color = "Significance"
+  #     )
+  # })
 
-    ggplot(res_df, aes(x = log2FoldChange, y = -log10(padj), color = significant)) +
-      geom_point(alpha = 0.7) +
-      scale_color_manual(values = c("FDR < 0.05" = "red", "NS" = "grey50")) +
-      theme_bw(base_size = 12) +
-      labs(
-        title = "Differential abundance volcano plot",
-        x = paste0("log2 fold change (", input$da_comp_level, " vs ", input$da_ref_level, ")"),
-        y = "-log10 adjusted p-value",
-        color = "Significance"
-      )
-  })
-
-  output$volcano_plot <- renderPlot({
-    volcano_plot_obj()
-  })
+  # output$volcano_plot <- renderPlot({
+  #   volcano_plot_obj()
+  # })
 
   output$download_sample_table <- downloadHandler(
     filename = function() paste0("sample_metadata_", Sys.Date(), ".csv"),
@@ -1617,15 +1615,15 @@ app_server <- function(input, output, session) {
     content = function(file) write.csv(permanova_table(), file, row.names = FALSE)
   )
 
-  output$download_deseq_table <- downloadHandler(
-    filename = function() paste0("deseq2_results_", Sys.Date(), ".csv"),
-    content = function(file) write.csv(deseq_results(), file, row.names = FALSE)
-  )
+  # output$download_deseq_table <- downloadHandler(
+  #   filename = function() paste0("deseq2_results_", Sys.Date(), ".csv"),
+  #   content = function(file) write.csv(deseq_results(), file, row.names = FALSE)
+  # )
 
-  output$download_volcano_plot <- downloadHandler(
-    filename = function() paste0("volcano_", Sys.Date(), ".png"),
-    content = function(file) ggsave(file, plot = volcano_plot_obj(), width = 8, height = 5, dpi = 300)
-  )
+  # output$download_volcano_plot <- downloadHandler(
+  #   filename = function() paste0("volcano_", Sys.Date(), ".png"),
+  #   content = function(file) ggsave(file, plot = volcano_plot_obj(), width = 8, height = 5, dpi = 300)
+  # )
 
   output$download_picrust_table <- downloadHandler(
     filename = function() paste0("ggpicrust2_results_", Sys.Date(), ".csv"),

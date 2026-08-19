@@ -2,35 +2,25 @@
 # Edited by: Elizabeth Brooks
 # Modified: 15 June 2026
 
-required_pkgs <- c("shiny", "phyloseq", "ggplot2", "vegan")
-optional_pkgs <- c("biomformat")
-
-missing_required <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
-if (length(missing_required) > 0) {
-  stop(
-    paste0(
-      "Missing required packages: ",
-      paste(missing_required, collapse = ", "),
-      "\nInstall CRAN packages with install.packages(...).",
-      "\nInstall Bioconductor packages with BiocManager::install(...)."
-    ),
-    call. = FALSE
-  )
+# install any missing packages
+options(repos = c(CRAN = "https://cloud.r-project.org/"))
+biocList <- c("DESeq2", "phyloseq", "ALDEx2", "edgeR", "limma")
+packageList <- c("shiny", "ggplot2", "vegan", "ggpicrust2", "RcppEigen", "RcppParallel")
+newBioc <- biocList[!(biocList %in% installed.packages()[,"Package"])]
+newPackages <- packageList[!(packageList %in% installed.packages()[,"Package"])]
+if(length(newBioc)){
+  install.packages("BiocManager")
+  BiocManager::install(newBioc)
 }
-
-missing_optional <- optional_pkgs[!vapply(optional_pkgs, requireNamespace, logical(1), quietly = TRUE)]
-if (length(missing_optional) > 0) {
-  message(
-    "Optional packages not installed (some features may be unavailable): ",
-    paste(missing_optional, collapse = ", ")
-  )
+if(length(newPackages)){
+  install.packages(newPackages)
 }
-
 suppressPackageStartupMessages({
   library(shiny)
   library(phyloseq)
   library(ggplot2)
   library(vegan)
+  library(ggpicrust2)
 })
 
 options(shiny.maxRequestSize = 500 * 1024^2)
@@ -44,6 +34,8 @@ default_paths <- list(
   biom = "data/centrifuge_reports.biom"
 )
 
+ggpicrust_cache_dir <- file.path(getwd(), "ggpicrust2_cache")
+ko_reference_rds_path <- file.path(ggpicrust_cache_dir, "ko_reference.rds")
 
 read_table_with_rownames <- function(path) {
   x <- read.csv(path, check.names = FALSE, stringsAsFactors = FALSE)
@@ -468,7 +460,7 @@ analysis_help_block <- function(title, bullets) {
 }
 
 app_ui <- fluidPage(
-  titlePanel("Amplicon Explorer: 16S / ITS"),
+  titlePanel("Functional Profiler: DESeq2 & PICRUSt2"),
   sidebarLayout(
     sidebarPanel(
       width = 3,
@@ -511,10 +503,7 @@ app_ui <- fluidPage(
       ),
       actionButton("load_data", "Load / Reload data", class = "btn-primary"),
       tags$hr(),
-      uiOutput("group_var_ui"),
-      uiOutput("facet_var_ui"),
-      uiOutput("tax_rank_ui"),
-      sliderInput("top_n", "Top taxa to show", min = 5, max = 30, value = 10)
+      uiOutput("group_var_ui")
     ),
     mainPanel(
       width = 9,
@@ -584,133 +573,91 @@ app_ui <- fluidPage(
           downloadButton("download_taxonomy_table", "Download taxonomy table")
         ),
         tabPanel(
-          "Rarefaction",
+          "Differential abundance",
           tags$br(),
           analysis_help_block(
-            "How to read rarefaction curves",
+            "How to read differential abundance",
             list(
-              "Each line represents one sample subsampled across sequencing depth.",
-              "Curves that plateau suggest sequencing depth is sufficient to capture most observed taxa.",
-              "Curves still rising steeply suggest additional sequencing could detect more taxa.",
-              "Compare curve shapes among groups to assess whether richness differences are robust to depth."
+              "This analysis tests whether taxa differ in abundance between two groups.",
+              "Log2 fold change shows the direction and size of the difference between the comparison group and the reference group.",
+              "Positive values mean higher abundance in the comparison group; negative values mean higher abundance in the reference group.",
+              "The volcano plot combines effect size and statistical evidence.",
+              "Focus on taxa with both meaningful fold change and low adjusted p-value."
             )
           ),
-          plotOutput("rarefaction_plot", height = 540),
-          downloadButton("download_rarefaction_plot", "Download rarefaction plot")
+          uiOutput("da_var_ui"),
+          fluidRow(
+            column(6, uiOutput("da_ref_level_ui")),
+            column(6, uiOutput("da_comp_level_ui"))
+          ),
+          actionButton("run_deseq", "Run DESeq2"),
+          tags$br(),
+          tags$br(),
+          verbatimTextOutput("deseq_status"),
+          tableOutput("deseq_table"),
+          plotOutput("volcano_plot", height = 440),
+          downloadButton("download_deseq_table", "Download DESeq2 table"),
+          downloadButton("download_volcano_plot", "Download volcano plot")
         ),
         tabPanel(
-          "Alpha diversity",
+          "ggpicrust2",
           tags$br(),
           analysis_help_block(
-            "How to read alpha diversity",
+            "How to use ggpicrust2 in this app",
             list(
-              "Observed richness counts how many taxa were detected in each sample.",
-              "Shannon diversity increases when a sample has both many taxa and a more even distribution among them.",
-              "Simpson diversity gives more weight to dominant taxa.",
-              "Each point is one sample. The boxplot summarizes the group.",
-              "If groups separate strongly, that suggests within-sample diversity differs among them."
+              "Upload a PICRUSt2 functional abundance table (for example, pred_metagenome_unstrat_descrip.tsv).",
+              "Use the same sample IDs as your metadata so the app can match columns to samples.",
+              "Choose a grouping variable, then run differential functional analysis.",
+              "The table shows annotated differential results, and plots show effect patterns and clustering."
             )
           ),
-          selectInput("alpha_measure", "Alpha metric", choices = c("Observed", "Shannon", "Simpson")),
-          plotOutput("alpha_plot", height = 420),
-          downloadButton("download_alpha_plot", "Download alpha plot"),
-          downloadButton("download_alpha_table", "Download alpha table")
-        ),
-        tabPanel(
-          "Beta ordination",
-          tags$br(),
-          analysis_help_block(
-            "How to read ordination",
-            list(
-              "Each point is one sample.",
-              "Samples that are close together have more similar community composition.",
-              "Samples that are far apart have more different community composition.",
-              "Bray-Curtis focuses on abundance differences, while Jaccard focuses more on presence/absence.",
-              "Clear group separation suggests community structure differs among groups, but overlap suggests weaker separation."
-            )
-          ),
+          fileInput("picrust_file", "PICRUSt2 abundance table (txt/tsv)", accept = c(".txt", ".tsv")),
+          uiOutput("picrust_group_var_ui"),
+          uiOutput("picrust_reference_ui"),
+          uiOutput("picrust_contrast_ui"),
           fluidRow(
             column(
               4,
-              selectInput("distance_method", "Distance", choices = c("bray", "jaccard", "euclidean"), selected = "bray")
+              selectInput(
+                "picrust_daa_method",
+                "DAA method",
+                choices = c("LinDA", "ALDEx2", "DESeq2", "edgeR"),
+                selected = "LinDA"
+              )
             ),
             column(
               4,
-              selectInput("ordination_method", "Ordination", choices = c("NMDS", "PCoA"), selected = "NMDS")
+              selectInput(
+                "picrust_pathway",
+                "Pathway type",
+                choices = c("KO", "MetaCyc", "EC"),
+                selected = "KO"
+              )
+            ),
+            column(
+              4,
+              checkboxInput("picrust_ko_to_kegg", "Convert KO to KEGG pathways", value = TRUE)
             )
           ),
-          plotOutput("ordination_plot", height = 460),
-          downloadButton("download_ordination_plot", "Download ordination plot"),
-          downloadButton("download_ordination_table", "Download ordination table")
-        ),
-        tabPanel(
-          "Taxa composition",
+          actionButton("run_picrust", "Run ggpicrust2", class = "btn-primary"),
           tags$br(),
-          analysis_help_block(
-            "How to read taxa composition",
-            list(
-              "Each bar is one sample.",
-              "Colors represent taxa at the selected rank, such as phylum or genus.",
-              "Bar height segments show relative abundance, not absolute count.",
-              "This plot is useful for identifying dominant taxa and broad community shifts.",
-              "The 'Other' category groups lower-abundance taxa so the plot stays readable."
-            )
-          ),
-          plotOutput("taxa_plot", height = 520),
-          downloadButton("download_taxa_plot", "Download taxa plot"),
-          downloadButton("download_taxa_table", "Download taxa table")
-        ),
-        tabPanel(
-          "Clustering",
           tags$br(),
-          analysis_help_block(
-            "How to read clustering",
-            list(
-              "Samples connected by short branches are more similar to each other.",
-              "Samples that join only near the top of the tree are less similar.",
-              "Clustering helps you spot natural sample groupings or potential outliers.",
-              "This is an exploratory method, so branch patterns should be interpreted together with ordination and metadata."
-            )
-          ),
-          plotOutput("cluster_plot", height = 520),
-          downloadButton("download_cluster_plot", "Download clustering plot"),
-          downloadButton("download_cluster_table", "Download clustering table")
-        ),
-        tabPanel(
-          "PERMANOVA",
+          verbatimTextOutput("picrust_status"),
+          tableOutput("picrust_table"),
+          downloadButton("download_picrust_table", "Download ggpicrust2 table"),
           tags$br(),
-          analysis_help_block(
-            "How to read PERMANOVA",
-            list(
-              "PERMANOVA tests whether overall community composition differs among groups.",
-              "The R2 value estimates how much of the variation is explained by the grouping variable.",
-              "A small p-value suggests the groups differ more than expected by chance.",
-              "PERMANOVA is sensitive to differences in dispersion, so it should be interpreted together with ordination plots."
-            )
-          ),
-          verbatimTextOutput("permanova_text"),
-          downloadButton("download_permanova_table", "Download PERMANOVA table")
-        ),
-        tabPanel(
-          "Core microbiome",
           tags$br(),
-          analysis_help_block(
-            "How to read the core microbiome",
-            list(
-              "The core microbiome is the set of taxa found across many samples at or above a chosen abundance threshold.",
-              "Prevalence threshold asks: in what fraction of samples must a taxon appear?",
-              "Minimum abundance asks: how abundant must a taxon be before we count it as present?",
-              "The heatmap shows which core taxa are common across samples and how abundant they are.",
-              "Changing the taxonomic rank lets you summarize the core at the phylum, genus, or species level."
-            )
-          ),
-          uiOutput("core_rank_ui"),
-          sliderInput("core_prev", "Prevalence threshold", min = 0.5, max = 1, value = 0.8, step = 0.05),
-          sliderInput("core_abund", "Minimum abundance (%)", min = 0.01, max = 1, value = 0.1, step = 0.01),
-          plotOutput("core_heatmap", height = 520),
-          downloadButton("download_core_plot", "Download core heatmap"),
-          downloadButton("download_core_table", "Download core table")
-        ),
+          plotOutput("picrust_errorbar_plot", height = 500),
+          downloadButton("download_picrust_errorbar_plot", "Download errorbar plot"),
+          tags$br(),
+          tags$br(),
+          plotOutput("picrust_pca_plot", height = 500),
+          downloadButton("download_picrust_pca_plot", "Download PCA plot"),
+          tags$br(),
+          tags$br(),
+          plotOutput("picrust_heatmap_plot", height = 520),
+          downloadButton("download_picrust_heatmap_plot", "Download heatmap plot")
+        )
       )
     )
   )
@@ -787,13 +734,7 @@ app_server <- function(input, output, session) {
     )
   }, ignoreInit = FALSE)
 
-  ps_rel <- reactive({
-    transform_sample_counts(ps_obj(), function(x) x / sum(x))
-  })
 
-  dist_obj <- reactive({
-    phyloseq::distance(ps_rel(), method = input$distance_method)
-  })
 
   otu_sample_matrix <- reactive({
     ps <- ps_obj()
@@ -830,28 +771,143 @@ app_server <- function(input, output, session) {
     out
   })
 
-  alpha_df <- reactive({
-    req(input$group_var)
-    ps <- ps_obj()
-    df <- estimate_richness(ps, measures = input$alpha_measure)
-    df$Sample <- rownames(df)
+  get_picrust_file <- reactive({
+    if (!is.null(input$picrust_file) && nzchar(input$picrust_file$datapath)) {
+      return(input$picrust_file$datapath)
+    }
 
-    meta <- as(sample_data(ps), "data.frame")
-    meta$Sample <- rownames(meta)
-    out <- merge(df, meta, by = "Sample")
-    keep <- !is.na(out[[input$group_var]]) & trimws(as.character(out[[input$group_var]])) != ""
-    out[keep, , drop = FALSE]
+    default_picrust <- "qiimeandpicrust_oyester/pred_metagenome_unstrat_descrip.tsv"
+    if (isTRUE(input$use_defaults) && file.exists(default_picrust)) {
+      return(default_picrust)
+    }
+
+    stop("Upload a PICRUSt2 abundance table in the ggpicrust2 tab.")
   })
 
-  alpha_plot_obj <- reactive({
-    df <- alpha_df()
-    ggplot(df, aes_string(x = input$group_var, y = input$alpha_measure, color = input$group_var)) +
-      geom_boxplot(outlier.shape = NA, alpha = 0.25) +
-      geom_jitter(width = 0.15, size = 2, alpha = 0.8) +
-      theme_bw(base_size = 13) +
-      theme(axis.text.x = element_text(angle = 35, hjust = 1)) +
-      labs(x = input$group_var, y = input$alpha_measure)
-  })
+  read_picrust_abundance <- function(path) {
+    ab <- read.delim(path, check.names = FALSE, stringsAsFactors = FALSE)
+    if (ncol(ab) < 3) {
+      stop("PICRUSt2 table appears malformed: expected feature column plus at least 2 sample columns.")
+    }
+
+    feature_candidates <- c("function", "#NAME", "pathway", "KO", "feature")
+    feature_col <- feature_candidates[feature_candidates %in% colnames(ab)]
+    feature_col <- if (length(feature_col) > 0) feature_col[1] else colnames(ab)[1]
+
+    ab[[feature_col]] <- trimws(as.character(ab[[feature_col]]))
+    ab <- ab[!is.na(ab[[feature_col]]) & ab[[feature_col]] != "", , drop = FALSE]
+    rownames(ab) <- make.unique(ab[[feature_col]])
+    ab <- ab[, setdiff(colnames(ab), feature_col), drop = FALSE]
+
+    is_numeric_like_col <- vapply(ab, function(col) {
+      vals <- trimws(as.character(col))
+      vals <- vals[!is.na(vals)]
+      vals <- vals[!vals %in% c("", "NA", "N/A", "na", "n/a", "NULL", "null")]
+      if (length(vals) == 0) {
+        return(FALSE)
+      }
+      all(grepl("^-?[0-9]+(\\.[0-9]+)?$", vals))
+    }, logical(1))
+
+    ab <- ab[, is_numeric_like_col, drop = FALSE]
+    if (ncol(ab) < 2) {
+      stop("PICRUSt2 table has fewer than 2 numeric sample columns after filtering.")
+    }
+
+    sanitize_count_table(ab, table_label = "PICRUSt2 table")
+  }
+
+  has_ko_to_kegg_reference <- function() {
+    out <- tryCatch(
+      {
+        data("ko_to_kegg_reference", package = "ggpicrust2", envir = environment())
+        exists("ko_to_kegg_reference", inherits = TRUE)
+      },
+      error = function(e) FALSE
+    )
+    isTRUE(out)
+  }
+
+  ensure_ko_reference_rds <- function(cache_path = ko_reference_rds_path) {
+    if (file.exists(cache_path)) {
+      return(cache_path)
+    }
+
+    dir.create(dirname(cache_path), recursive = TRUE, showWarnings = FALSE)
+
+    ns <- asNamespace("ggpicrust2")
+    ko_ref <- NULL
+
+    if (exists("ko_reference", envir = ns, inherits = FALSE)) {
+      ko_ref <- get("ko_reference", envir = ns, inherits = FALSE)
+    } else if (exists("KO_reference", envir = ns, inherits = FALSE)) {
+      ko_ref <- get("KO_reference", envir = ns, inherits = FALSE)
+    } else {
+      ref_env <- new.env(parent = emptyenv())
+      loaded <- tryCatch(
+        {
+          utils::data("ko_reference", package = "ggpicrust2", envir = ref_env)
+          exists("ko_reference", envir = ref_env, inherits = FALSE)
+        },
+        error = function(e) FALSE
+      )
+
+      if (!loaded) {
+        loaded <- tryCatch(
+          {
+            utils::data("KO_reference", package = "ggpicrust2", envir = ref_env)
+            exists("KO_reference", envir = ref_env, inherits = FALSE)
+          },
+          error = function(e) FALSE
+        )
+      }
+
+      if (!loaded) {
+        stop(
+          "Could not load KO reference from ggpicrust2 (neither 'ko_reference' nor 'KO_reference'). ",
+          "Please reinstall/update ggpicrust2."
+        )
+      }
+
+      ko_ref_name <- if (exists("ko_reference", envir = ref_env, inherits = FALSE)) "ko_reference" else "KO_reference"
+      ko_ref <- get(ko_ref_name, envir = ref_env, inherits = FALSE)
+    }
+
+    saveRDS(ko_ref, cache_path)
+    cache_path
+  }
+
+  ensure_ko_reference_loaded <- function(cache_path = ko_reference_rds_path) {
+    cache_file <- ensure_ko_reference_rds(cache_path)
+    ko_ref <- readRDS(cache_file)
+
+    if (!is.data.frame(ko_ref) || nrow(ko_ref) == 0) {
+      stop("Cached ko_reference.rds is invalid or empty.")
+    }
+
+    ns <- asNamespace("ggpicrust2")
+    has_binding <- exists("ko_reference", envir = ns, inherits = FALSE)
+    if (!has_binding) {
+      assign("ko_reference", ko_ref, envir = ns)
+    }
+
+    has_caps_binding <- exists("KO_reference", envir = ns, inherits = FALSE)
+    if (!has_caps_binding) {
+      assign("KO_reference", ko_ref, envir = ns)
+    }
+
+    invisible(cache_file)
+  }
+
+  make_notice_plot <- function(label) {
+    ggplot() +
+      annotate("text", x = 0.5, y = 0.5, label = label, size = 5) +
+      xlim(0, 1) +
+      ylim(0, 1) +
+      theme_void()
+  }
+
+
 
   ordination_obj <- reactive({
     ps_rel_local <- ps_rel()
@@ -896,17 +952,6 @@ app_server <- function(input, output, session) {
       theme_bw(base_size = 13)
   })
 
-  taxa_df <- reactive({
-    req(input$tax_rank)
-    ps_rank <- tax_glom(ps_rel(), taxrank = input$tax_rank)
-    df <- psmelt(ps_rank)
-    df$Abundance <- df$Abundance * 100
-    df[[input$tax_rank]] <- as.character(df[[input$tax_rank]])
-    df[[input$tax_rank]][is.na(df[[input$tax_rank]]) | df[[input$tax_rank]] == ""] <- "Unassigned"
-    top_taxa <- names(sort(tapply(df$Abundance, df[[input$tax_rank]], sum), decreasing = TRUE))[1:input$top_n]
-    df[[input$tax_rank]][!df[[input$tax_rank]] %in% top_taxa] <- "Other"
-    df
-  })
 
   taxa_plot_obj <- reactive({
     df <- taxa_df()
@@ -922,44 +967,9 @@ app_server <- function(input, output, session) {
     p
   })
 
-  cluster_obj <- reactive({
-    hclust(dist_obj(), method = "average")
-  })
 
-  cluster_table <- reactive({
-    hc <- cluster_obj()
-    data.frame(
-      Sample = hc$labels[hc$order],
-      ClusterOrder = seq_along(hc$order),
-      stringsAsFactors = FALSE
-    )
-  })
 
-  permanova_result <- reactive({
-    req(input$group_var)
-    ps_rel_local <- ps_rel()
-    meta_df <- as(sample_data(ps_rel_local), "data.frame")
-    req(input$group_var %in% colnames(meta_df))
 
-    keep <- !is.na(meta_df[[input$group_var]]) & trimws(as.character(meta_df[[input$group_var]])) != ""
-    validate(need(sum(keep) >= 2, "Need at least 2 samples with non-missing group values for PERMANOVA."))
-
-    ps_sub <- prune_samples(rownames(meta_df)[keep], ps_rel_local)
-    meta_sub <- as(sample_data(ps_sub), "data.frame")
-    meta_sub$GroupVar <- as.factor(as.character(meta_sub[[input$group_var]]))
-    validate(need(length(unique(meta_sub$GroupVar)) >= 2, "PERMANOVA needs at least 2 groups after removing missing values."))
-
-    dist_sub <- phyloseq::distance(ps_sub, method = input$distance_method)
-    vegan::adonis2(dist_sub ~ GroupVar, data = meta_sub)
-  })
-
-  permanova_table <- reactive({
-    ad <- permanova_result()
-    out <- as.data.frame(ad)
-    out$Term <- rownames(out)
-    rownames(out) <- NULL
-    out
-  })
 
   observe({
     ps <- ps_obj()
@@ -1002,6 +1012,17 @@ app_server <- function(input, output, session) {
       selectInput("da_var", "Model variable", choices = meta_cols, selected = meta_cols[1])
     })
 
+    output$picrust_group_var_ui <- renderUI({
+      selectInput("picrust_group_var", "ggpicrust2 group variable", choices = meta_cols, selected = preferred_group)
+    })
+
+    output$picrust_reference_ui <- renderUI({
+      req(input$picrust_group_var)
+      levs <- unique(trimws(as.character(meta_df[[input$picrust_group_var]])))
+      levs <- levs[!is.na(levs) & levs != ""]
+      choices <- c("Auto (first level)" = "", levs)
+      selectInput("picrust_reference", "ggpicrust2 reference level (optional)", choices = choices, selected = "")
+    })
   })
 
   observe({
@@ -1049,26 +1070,10 @@ app_server <- function(input, output, session) {
     head(taxonomy_table_df(), 25)
   }, rownames = FALSE)
 
-  output$alpha_plot <- renderPlot({
-    alpha_plot_obj()
-  })
 
-  output$ordination_plot <- renderPlot({
-    ordination_plot_obj()
-  })
 
-  output$taxa_plot <- renderPlot({
-    taxa_plot_obj()
-  })
 
-  output$cluster_plot <- renderPlot({
-    hc <- cluster_obj()
-    plot(hc, main = "UPGMA clustering (selected distance)", xlab = "", sub = "")
-  })
 
-  output$permanova_text <- renderPrint({
-    print(permanova_result())
-  })
 
   deseq_results <- eventReactive(input$run_deseq, {
     if (!requireNamespace("DESeq2", quietly = TRUE)) {
@@ -1107,12 +1112,366 @@ app_server <- function(input, output, session) {
     res_df
   })
 
+  picrust_base_results <- eventReactive(input$run_picrust, {
+    if (!requireNamespace("ggpicrust2", quietly = TRUE)) {
+      stop("Package ggpicrust2 is not installed. Install with install.packages('ggpicrust2').")
+    }
+
+    ko_ref_cache_used <- tryCatch(
+      {
+        ensure_ko_reference_loaded()
+        TRUE
+      },
+      error = function(e) {
+        FALSE
+      }
+    )
+
+    req(input$picrust_group_var)
+    picrust_path <- get_picrust_file()
+    abundance <- read_picrust_abundance(picrust_path)
+
+    meta <- as(sample_data(ps_obj()), "data.frame")
+    meta$sample_name <- rownames(meta)
+    req(input$picrust_group_var %in% colnames(meta))
+
+    colnames(abundance) <- trimws(colnames(abundance))
+    common_samples <- intersect(colnames(abundance), meta$sample_name)
+    if (length(common_samples) < 2) {
+      stop("Fewer than 2 overlapping sample IDs between PICRUSt2 table and loaded metadata.")
+    }
+
+    abundance <- abundance[, common_samples, drop = FALSE]
+    meta <- meta[match(common_samples, meta$sample_name), , drop = FALSE]
+
+    group_vals <- trimws(as.character(meta[[input$picrust_group_var]]))
+    keep <- !is.na(group_vals) & group_vals != ""
+    abundance <- abundance[, keep, drop = FALSE]
+    meta <- meta[keep, , drop = FALSE]
+
+    if (ncol(abundance) < 2) {
+      stop("Need at least 2 samples with non-missing group values for ggpicrust2.")
+    }
+
+    meta_gg <- data.frame(
+      sample_name = meta$sample_name,
+      GroupVar = as.character(meta[[input$picrust_group_var]]),
+      stringsAsFactors = FALSE
+    )
+
+    requested_reference <- NULL
+    if (!is.null(input$picrust_reference) && nzchar(input$picrust_reference)) {
+      requested_reference <- input$picrust_reference
+    }
+
+    if (!is.null(requested_reference) && !(requested_reference %in% unique(meta_gg$GroupVar))) {
+      stop("Selected ggpicrust2 reference level is not present after sample filtering.")
+    }
+
+    if (length(unique(meta_gg$GroupVar)) < 2) {
+      stop("Need at least 2 groups after removing missing values for ggpicrust2.")
+    }
+
+    grp_counts <- table(meta_gg$GroupVar)
+    if (!any(grp_counts >= 2)) {
+      stop(
+        paste0(
+          "Selected grouping variable has no replicated groups for ggpicrust2. ",
+          "Choose a variable where at least one group has >= 2 samples."
+        )
+      )
+    }
+
+    analysis_abundance <- abundance
+    notes <- character(0)
+    effective_ko_to_kegg <- identical(input$picrust_pathway, "KO") && isTRUE(input$picrust_ko_to_kegg)
+    if (effective_ko_to_kegg && !has_ko_to_kegg_reference()) {
+      notes <- c(
+        notes,
+        "Reference 'ko_to_kegg_reference' not found; running without KO-to-KEGG conversion."
+      )
+      effective_ko_to_kegg <- FALSE
+    }
+
+    if (isTRUE(ko_ref_cache_used)) {
+      notes <- c(notes, paste0("Loaded local KO reference cache: ", ko_reference_rds_path))
+    } else {
+      notes <- c(
+        notes,
+        "Could not load local KO reference cache; ggpicrust2 may require package reinstallation if KO annotation fails."
+      )
+    }
+
+    if (effective_ko_to_kegg) {
+      ko_ids <- trimws(rownames(abundance))
+      ko_like <- grepl("^(ko:)?K[0-9]{5}$", ko_ids)
+      if (!all(ko_like)) {
+        stop("KO to KEGG conversion requires KO IDs as row names (K##### or ko:K#####).")
+      }
+
+      ko_input <- data.frame(
+        ko_ids,
+        abundance,
+        check.names = FALSE,
+        stringsAsFactors = FALSE
+      )
+      colnames(ko_input)[1] <- "function"
+
+      analysis_abundance <- ggpicrust2::ko2kegg_abundance(data = ko_input)
+    }
+
+    daa_results <- ggpicrust2::pathway_daa(
+      abundance = analysis_abundance,
+      metadata = meta_gg,
+      group = "GroupVar",
+      daa_method = input$picrust_daa_method,
+      p_adjust_method = "BH",
+      reference = requested_reference
+    )
+
+    if (is.null(daa_results) || nrow(daa_results) == 0) {
+      stop(
+        paste0(
+          "ggpicrust2 returned no differential results (empty table). ",
+          "Try a grouping variable with stronger replication or switch DAA method."
+        )
+      )
+    }
+
+    annotated_results <- ggpicrust2::pathway_annotation(
+      pathway = input$picrust_pathway,
+      daa_results_df = daa_results,
+      ko_to_kegg = effective_ko_to_kegg
+    )
+
+    if (is.null(annotated_results) || nrow(annotated_results) == 0) {
+      stop(
+        paste0(
+          "ggpicrust2 annotation produced an empty table. ",
+          "Check grouping variable and pathway settings."
+        )
+      )
+    }
+
+    available_contrasts <- character(0)
+    best_contrast <- NULL
+    if (all(c("group1", "group2") %in% colnames(annotated_results))) {
+      contrast_key <- paste(annotated_results$group1, annotated_results$group2, sep = "__vs__")
+      split_idx <- split(seq_len(nrow(annotated_results)), contrast_key)
+      contrast_scores <- vapply(split_idx, function(idx) {
+        pvals <- annotated_results$p_adjust[idx]
+        pvals <- pvals[!is.na(pvals)]
+        if (length(pvals) == 0) {
+          return(Inf)
+        }
+        min(pvals)
+      }, numeric(1))
+
+      available_contrasts <- names(split_idx)
+      best_key <- names(which.min(contrast_scores))[1]
+      if (!is.na(best_key) && nzchar(best_key)) {
+        best_contrast <- best_key
+      }
+    }
+
+    pca_plot <- tryCatch(
+      ggpicrust2::pathway_pca(
+        abundance = analysis_abundance,
+        metadata = meta_gg,
+        group = "GroupVar"
+      ),
+      error = function(e) {
+        notes <<- c(notes, paste0("PCA plot unavailable: ", conditionMessage(e)))
+        make_notice_plot("PCA plot unavailable for current settings")
+      }
+    )
+
+    list(
+      abundance = analysis_abundance,
+      metadata = meta_gg,
+      daa = daa_results,
+      annotated = annotated_results,
+      pca = pca_plot,
+      n_samples = ncol(analysis_abundance),
+      n_features = nrow(analysis_abundance),
+      notes = notes,
+      reference = requested_reference,
+      effective_ko_to_kegg = effective_ko_to_kegg,
+      available_contrasts = available_contrasts,
+      default_contrast = best_contrast
+    )
+  })
+
+  picrust_results <- reactive({
+    req(input$run_picrust > 0)
+    base <- picrust_base_results()
+
+    analysis_abundance <- base$abundance
+    meta_gg <- base$metadata
+    annotated_results <- base$annotated
+    notes <- base$notes
+
+    plot_results <- annotated_results
+    contrast_label <- NULL
+    if (length(base$available_contrasts) > 0 && all(c("group1", "group2") %in% colnames(plot_results))) {
+      selected_contrast <- input$picrust_contrast
+      if (is.null(selected_contrast) || !nzchar(selected_contrast) || !(selected_contrast %in% base$available_contrasts)) {
+        selected_contrast <- base$default_contrast
+      }
+
+      if (!is.null(selected_contrast) && nzchar(selected_contrast)) {
+        contrast_key <- paste(plot_results$group1, plot_results$group2, sep = "__vs__")
+        plot_results <- plot_results[contrast_key == selected_contrast, , drop = FALSE]
+        contrast_label <- selected_contrast
+      }
+
+      if (length(base$available_contrasts) > 1 && !is.null(contrast_label)) {
+        if (!is.null(input$picrust_contrast) && nzchar(input$picrust_contrast)) {
+          notes <- c(notes, paste0("Manual contrast selected: ", gsub("__vs__", " vs ", contrast_label), "."))
+        } else {
+          notes <- c(notes, paste0("Multiple group contrasts detected; plotting contrast: ", gsub("__vs__", " vs ", contrast_label), "."))
+        }
+      }
+    }
+
+    x_lab_value <- if (base$effective_ko_to_kegg) "pathway_name" else "description"
+    order_value <- if (base$effective_ko_to_kegg) "pathway_class" else "group"
+
+    errorbar_plot <- tryCatch(
+      {
+        ggpicrust2::pathway_errorbar(
+          abundance = analysis_abundance,
+          daa_results_df = plot_results,
+          Group = meta_gg$GroupVar,
+          ko_to_kegg = base$effective_ko_to_kegg,
+          p_values_threshold = 0.05,
+          order = order_value,
+          select = NULL,
+          p_value_bar = TRUE,
+          colors = NULL,
+          x_lab = x_lab_value
+        )
+      },
+      error = function(e) {
+        notes <<- c(notes, paste0("Errorbar plot at FDR<0.05 unavailable: ", conditionMessage(e)))
+        tryCatch(
+          ggpicrust2::pathway_errorbar(
+            abundance = analysis_abundance,
+            daa_results_df = plot_results,
+            Group = meta_gg$GroupVar,
+            ko_to_kegg = base$effective_ko_to_kegg,
+            p_values_threshold = 1,
+            order = order_value,
+            select = NULL,
+            p_value_bar = TRUE,
+            colors = NULL,
+            x_lab = x_lab_value
+          ),
+          error = function(e2) {
+            notes <<- c(notes, paste0("Fallback errorbar plot unavailable: ", conditionMessage(e2)))
+            make_notice_plot("No errorbar plot available for current settings")
+          }
+        )
+      }
+    )
+
+    sig_features <- plot_results$feature[
+      !is.na(plot_results$p_adjust) & plot_results$p_adjust < 0.05
+    ]
+    sig_features <- intersect(sig_features, rownames(analysis_abundance))
+
+    heatmap_plot <- NULL
+    if (length(sig_features) > 0) {
+      heatmap_plot <- tryCatch(
+        ggpicrust2::pathway_heatmap(
+          abundance = analysis_abundance[sig_features, , drop = FALSE],
+          metadata = meta_gg,
+          group = "GroupVar"
+        ),
+        error = function(e) {
+          notes <<- c(notes, paste0("Heatmap unavailable: ", conditionMessage(e)))
+          NULL
+        }
+      )
+    } else {
+      notes <- c(notes, "No significant pathways at FDR < 0.05; heatmap not generated.")
+    }
+
+    list(
+      daa = base$daa,
+      annotated = base$annotated,
+      errorbar = errorbar_plot,
+      pca = base$pca,
+      heatmap = heatmap_plot,
+      sig_features = sig_features,
+      n_samples = base$n_samples,
+      n_features = base$n_features,
+      notes = notes,
+      contrast = contrast_label,
+      reference = base$reference,
+      available_contrasts = base$available_contrasts,
+      default_contrast = base$default_contrast
+    )
+  })
+
+  output$picrust_contrast_ui <- renderUI({
+    if (is.null(input$run_picrust) || input$run_picrust < 1) {
+      return(NULL)
+    }
+
+    base <- picrust_base_results()
+    if (length(base$available_contrasts) <= 1) {
+      return(NULL)
+    }
+
+    contrast_labels <- gsub("__vs__", " vs ", base$available_contrasts)
+    choices <- c("Auto (most significant contrast)" = "", stats::setNames(base$available_contrasts, contrast_labels))
+
+    selected_val <- ""
+    if (!is.null(input$picrust_contrast) && input$picrust_contrast %in% base$available_contrasts) {
+      selected_val <- input$picrust_contrast
+    }
+
+    selectInput("picrust_contrast", "Contrast to plot", choices = choices, selected = selected_val)
+  })
+
   output$deseq_status <- renderPrint({
     if (!requireNamespace("DESeq2", quietly = TRUE)) {
       cat("DESeq2 package is not installed. Install with BiocManager::install('DESeq2').\n")
       return(invisible(NULL))
     }
     cat("Ready. Choose variable and levels, then click Run DESeq2.\n")
+  })
+
+  output$picrust_status <- renderPrint({
+    if (!requireNamespace("ggpicrust2", quietly = TRUE)) {
+      cat("ggpicrust2 package is not installed. Install with install.packages('ggpicrust2').\n")
+      return(invisible(NULL))
+    }
+
+    if (is.null(input$run_picrust) || input$run_picrust < 1) {
+      cat("Ready. Upload a PICRUSt2 table in the ggpicrust2 tab and click Run ggpicrust2.\n")
+      return(invisible(NULL))
+    }
+
+    res <- picrust_results()
+    cat("ggpicrust2 run completed.\n")
+    cat(sprintf("Samples used: %d\n", res$n_samples))
+    cat(sprintf("Features used: %d\n", res$n_features))
+    cat(sprintf("DAA rows: %d\n", nrow(res$daa)))
+    cat(sprintf("Annotated rows: %d\n", nrow(res$annotated)))
+    cat(sprintf("Significant pathways (FDR < 0.05): %d\n", length(res$sig_features)))
+    if (!is.null(res$reference)) {
+      cat(sprintf("Reference level: %s\n", res$reference))
+    }
+    if (!is.null(res$contrast)) {
+      cat(sprintf("Plotted contrast: %s\n", gsub("__vs__", " vs ", res$contrast)))
+    }
+
+    if (length(res$notes) > 0) {
+      cat("\nNotes:\n")
+      cat(paste0("- ", res$notes, collapse = "\n"), "\n")
+    }
   })
 
   output$deseq_table <- renderTable({
@@ -1139,112 +1498,28 @@ app_server <- function(input, output, session) {
       )
   })
 
-  output$core_heatmap <- renderPlot({
-    req(input$core_tax_rank)
-    ps_rel_local <- ps_rel()
-    otu <- as(otu_table(ps_rel_local), "matrix")
-    if (!taxa_are_rows(ps_rel_local)) {
-      otu <- t(otu)
-    }
+  output$picrust_table <- renderTable({
+    req(input$run_picrust > 0)
+    head(picrust_results()$annotated, 25)
+  }, rownames = FALSE)
 
-    prev <- rowMeans(otu > (input$core_abund / 100))
-    core_taxa <- names(prev[prev >= input$core_prev])
-
-    validate(need(length(core_taxa) > 0, "No core taxa at current thresholds."))
-
-    core_ps <- prune_taxa(core_taxa, ps_rel_local)
-    core_df <- psmelt(core_ps)
-    core_df$AbundancePct <- core_df$Abundance * 100
-
-    if (!(input$core_tax_rank %in% colnames(core_df))) {
-      core_df$TaxaLabel <- as.character(core_df$OTU)
-    } else {
-      core_df$TaxaLabel <- as.character(core_df[[input$core_tax_rank]])
-      core_df$TaxaLabel[is.na(core_df$TaxaLabel) | core_df$TaxaLabel == ""] <- "Unassigned"
-    }
-
-    core_df <- aggregate(AbundancePct ~ Sample + TaxaLabel, data = core_df, FUN = sum)
-    core_df <- core_df[order(core_df$TaxaLabel, core_df$Sample), , drop = FALSE]
-
-    ggplot(core_df, aes(x = Sample, y = TaxaLabel, fill = AbundancePct)) +
-      geom_tile() +
-      scale_fill_gradient(low = "white", high = "steelblue") +
-      theme_bw(base_size = 11) +
-      theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
-      labs(
-        title = paste("Core microbiome heatmap:", input$core_tax_rank),
-        x = "Sample",
-        y = input$core_tax_rank,
-        fill = "Abundance (%)"
-      )
+  output$picrust_errorbar_plot <- renderPlot({
+    req(input$run_picrust > 0)
+    print(picrust_results()$errorbar)
   })
 
-  draw_rarefaction_plot <- function() {
-    req(input$group_var)
-    otu_mat <- otu_sample_matrix()
-    validate(need(nrow(otu_mat) >= 2, "Need at least 2 samples for rarefaction."))
-    validate(need(ncol(otu_mat) >= 2, "Need at least 2 taxa for rarefaction."))
-    validate(need(min(rowSums(otu_mat)) > 1, "Not enough reads per sample to compute rarefaction curves."))
-
-    meta_df <- as(sample_data(ps_obj()), "data.frame")
-    group_vals <- as.factor(as.character(meta_df[rownames(otu_mat), input$group_var]))
-    group_levels <- levels(group_vals)
-    group_palette <- setNames(rainbow(max(1, length(group_levels))), group_levels)
-    line_cols <- group_palette[as.character(group_vals)]
-
-    step_size <- max(1, floor(min(rowSums(otu_mat)) / 40))
-
-    vegan::rarecurve(
-      otu_mat,
-      step = step_size,
-      sample = min(rowSums(otu_mat)),
-      col = line_cols,
-      label = FALSE,
-      xlab = "Sequencing depth",
-      ylab = "Observed taxa",
-      main = "Rarefaction curves"
-    )
-
-    legend(
-      "bottomright",
-      legend = names(group_palette),
-      col = group_palette,
-      lty = 1,
-      bty = "n",
-      cex = 0.8
-    )
-  }
-
-  output$rarefaction_plot <- renderPlot({
-    draw_rarefaction_plot()
+  output$picrust_pca_plot <- renderPlot({
+    req(input$run_picrust > 0)
+    print(picrust_results()$pca)
   })
 
-  core_table <- reactive({
-    req(input$core_tax_rank)
-    ps_rel_local <- ps_rel()
-    otu <- as(otu_table(ps_rel_local), "matrix")
-    if (!taxa_are_rows(ps_rel_local)) {
-      otu <- t(otu)
-    }
-
-    prev <- rowMeans(otu > (input$core_abund / 100))
-    core_taxa <- names(prev[prev >= input$core_prev])
-    validate(need(length(core_taxa) > 0, "No core taxa at current thresholds."))
-
-    core_ps <- prune_taxa(core_taxa, ps_rel_local)
-    core_df <- psmelt(core_ps)
-    core_df$AbundancePct <- core_df$Abundance * 100
-
-    if (!(input$core_tax_rank %in% colnames(core_df))) {
-      core_df$TaxaLabel <- as.character(core_df$OTU)
-    } else {
-      core_df$TaxaLabel <- as.character(core_df[[input$core_tax_rank]])
-      core_df$TaxaLabel[is.na(core_df$TaxaLabel) | core_df$TaxaLabel == ""] <- "Unassigned"
-    }
-
-    out <- aggregate(AbundancePct ~ Sample + TaxaLabel, data = core_df, FUN = sum)
-    out[order(out$TaxaLabel, out$Sample), , drop = FALSE]
+  output$picrust_heatmap_plot <- renderPlot({
+    req(input$run_picrust > 0)
+    validate(need(!is.null(picrust_results()$heatmap), "No significant pathways at FDR < 0.05 to plot heatmap."))
+    print(picrust_results()$heatmap)
   })
+
+
 
   volcano_plot_obj <- reactive({
     req(input$run_deseq > 0)
@@ -1344,6 +1619,39 @@ app_server <- function(input, output, session) {
   output$download_volcano_plot <- downloadHandler(
     filename = function() paste0("volcano_", Sys.Date(), ".png"),
     content = function(file) ggsave(file, plot = volcano_plot_obj(), width = 8, height = 5, dpi = 300)
+  )
+
+  output$download_picrust_table <- downloadHandler(
+    filename = function() paste0("ggpicrust2_results_", Sys.Date(), ".csv"),
+    content = function(file) write.csv(picrust_results()$annotated, file, row.names = FALSE)
+  )
+
+  output$download_picrust_errorbar_plot <- downloadHandler(
+    filename = function() paste0("ggpicrust2_errorbar_", Sys.Date(), ".png"),
+    content = function(file) {
+      png(file, width = 1400, height = 900, res = 140)
+      print(picrust_results()$errorbar)
+      dev.off()
+    }
+  )
+
+  output$download_picrust_pca_plot <- downloadHandler(
+    filename = function() paste0("ggpicrust2_pca_", Sys.Date(), ".png"),
+    content = function(file) {
+      png(file, width = 1200, height = 900, res = 140)
+      print(picrust_results()$pca)
+      dev.off()
+    }
+  )
+
+  output$download_picrust_heatmap_plot <- downloadHandler(
+    filename = function() paste0("ggpicrust2_heatmap_", Sys.Date(), ".png"),
+    content = function(file) {
+      validate(need(!is.null(picrust_results()$heatmap), "No significant pathways at FDR < 0.05 to save heatmap."))
+      png(file, width = 1400, height = 1000, res = 140)
+      print(picrust_results()$heatmap)
+      dev.off()
+    }
   )
 
   output$download_core_plot <- downloadHandler(
