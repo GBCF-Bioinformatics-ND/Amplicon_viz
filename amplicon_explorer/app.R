@@ -1,6 +1,6 @@
 # Created by: Bharat Mishra
 # Edited by: Elizabeth Brooks
-# Modified: 15 June 2026
+# Modified: 21 Sept 2026
 
 required_pkgs <- c("shiny", "phyloseq", "ggplot2", "vegan")
 optional_pkgs <- c("biomformat")
@@ -492,7 +492,7 @@ app_ui <- fluidPage(
         choices = c("CSV tables" = "csv", "BIOM" = "biom", "QIIME2 feature table" = "qiime2"),
         selected = "csv"
       ),
-      checkboxInput("use_defaults", "Use workspace default files", value = TRUE),
+      checkboxInput("use_defaults", "Use workspace default files", value = FALSE),
       conditionalPanel(
         condition = "input.data_mode == 'csv'",
         fileInput("otu_file", "OTU/ASV count table (CSV)", accept = ".csv"),
@@ -582,21 +582,6 @@ app_ui <- fluidPage(
           tags$h4("Taxonomy preview (includes Taxon and Confidence when available)"),
           tableOutput("taxonomy_table"),
           downloadButton("download_taxonomy_table", "Download taxonomy table")
-        ),
-        tabPanel(
-          "Rarefaction",
-          tags$br(),
-          analysis_help_block(
-            "How to read rarefaction curves",
-            list(
-              "Each line represents one sample subsampled across sequencing depth.",
-              "Curves that plateau suggest sequencing depth is sufficient to capture most observed taxa.",
-              "Curves still rising steeply suggest additional sequencing could detect more taxa.",
-              "Compare curve shapes among groups to assess whether richness differences are robust to depth."
-            )
-          ),
-          plotOutput("rarefaction_plot", height = 540),
-          downloadButton("download_rarefaction_plot", "Download rarefaction plot")
         ),
         tabPanel(
           "Alpha diversity",
@@ -717,6 +702,10 @@ app_ui <- fluidPage(
 )
 
 app_server <- function(input, output, session) {
+  require_tab <- function(tab_name) {
+    req(input$tabs == tab_name)
+  }
+
   get_inputs <- reactive({
     if (isTRUE(input$use_defaults)) {
       if (identical(input$data_mode, "csv")) {
@@ -853,45 +842,35 @@ app_server <- function(input, output, session) {
       labs(x = input$group_var, y = input$alpha_measure)
   })
 
-  ordination_obj <- reactive({
+  ordination_result <- reactive({
+    req(input$group_var)
     ps_rel_local <- ps_rel()
+    meta_df <- as(sample_data(ps_rel_local), "data.frame")
+    keep <- !is.na(meta_df[[input$group_var]]) & trimws(as.character(meta_df[[input$group_var]])) != ""
+    ps_rel_local <- prune_samples(rownames(meta_df)[keep], ps_rel_local)
+    validate(need(nsamples(ps_rel_local) >= 2, "Need at least 2 samples with non-missing group values for ordination."))
+
     if (identical(input$ordination_method, "NMDS")) {
-      ordinate(ps_rel_local, method = "NMDS", distance = input$distance_method)
+      ord <- ordinate(ps_rel_local, method = "NMDS", distance = input$distance_method)
     } else {
-      ordinate(ps_rel_local, method = "PCoA", distance = input$distance_method)
+      ord <- ordinate(ps_rel_local, method = "PCoA", distance = input$distance_method)
     }
+    list(phyloseq = ps_rel_local, ordination = ord)
   })
 
   ordination_df <- reactive({
-    req(input$group_var)
-    ps_rel_local <- ps_rel()
-    meta_df <- as(sample_data(ps_rel_local), "data.frame")
-    keep <- !is.na(meta_df[[input$group_var]]) & trimws(as.character(meta_df[[input$group_var]])) != ""
-    ps_rel_local <- prune_samples(rownames(meta_df)[keep], ps_rel_local)
-    validate(need(nsamples(ps_rel_local) >= 2, "Need at least 2 samples with non-missing group values for ordination."))
-
-    if (identical(input$ordination_method, "NMDS")) {
-      ord <- ordinate(ps_rel_local, method = "NMDS", distance = input$distance_method)
-    } else {
-      ord <- ordinate(ps_rel_local, method = "PCoA", distance = input$distance_method)
-    }
-    plot_ordination(ps_rel_local, ord, color = input$group_var, justDF = TRUE)
+    result <- ordination_result()
+    plot_ordination(
+      result$phyloseq,
+      result$ordination,
+      color = input$group_var,
+      justDF = TRUE
+    )
   })
 
   ordination_plot_obj <- reactive({
-    req(input$group_var)
-    ps_rel_local <- ps_rel()
-    meta_df <- as(sample_data(ps_rel_local), "data.frame")
-    keep <- !is.na(meta_df[[input$group_var]]) & trimws(as.character(meta_df[[input$group_var]])) != ""
-    ps_rel_local <- prune_samples(rownames(meta_df)[keep], ps_rel_local)
-    validate(need(nsamples(ps_rel_local) >= 2, "Need at least 2 samples with non-missing group values for ordination."))
-
-    if (identical(input$ordination_method, "NMDS")) {
-      ord <- ordinate(ps_rel_local, method = "NMDS", distance = input$distance_method)
-    } else {
-      ord <- ordinate(ps_rel_local, method = "PCoA", distance = input$distance_method)
-    }
-    plot_ordination(ps_rel_local, ord, color = input$group_var) +
+    result <- ordination_result()
+    plot_ordination(result$phyloseq, result$ordination, color = input$group_var) +
       geom_point(size = 3, alpha = 0.9) +
       theme_bw(base_size = 13)
   })
@@ -1050,96 +1029,33 @@ app_server <- function(input, output, session) {
   }, rownames = FALSE)
 
   output$alpha_plot <- renderPlot({
+    require_tab("Alpha diversity")
     alpha_plot_obj()
   })
 
   output$ordination_plot <- renderPlot({
+    require_tab("Beta ordination")
     ordination_plot_obj()
   })
 
   output$taxa_plot <- renderPlot({
+    require_tab("Taxa composition")
     taxa_plot_obj()
   })
 
   output$cluster_plot <- renderPlot({
+    require_tab("Clustering")
     hc <- cluster_obj()
     plot(hc, main = "UPGMA clustering (selected distance)", xlab = "", sub = "")
   })
 
   output$permanova_text <- renderPrint({
+    require_tab("PERMANOVA")
     print(permanova_result())
   })
 
-  deseq_results <- eventReactive(input$run_deseq, {
-    if (!requireNamespace("DESeq2", quietly = TRUE)) {
-      stop("Package DESeq2 is not installed.")
-    }
-
-    req(input$da_var, input$da_ref_level, input$da_comp_level)
-    if (identical(input$da_ref_level, input$da_comp_level)) {
-      stop("Reference and comparison levels must be different.")
-    }
-
-    ps <- ps_obj()
-    meta_df <- as(sample_data(ps), "data.frame")
-    req(input$da_var %in% colnames(meta_df))
-
-    keep_samples <- rownames(meta_df)[as.character(meta_df[[input$da_var]]) %in% c(input$da_ref_level, input$da_comp_level)]
-    ps_sub <- prune_samples(keep_samples, ps)
-    meta_sub <- as(sample_data(ps_sub), "data.frame")
-    meta_sub[[input$da_var]] <- factor(as.character(meta_sub[[input$da_var]]), levels = c(input$da_ref_level, input$da_comp_level))
-    sample_data(ps_sub) <- sample_data(meta_sub)
-
-    dds <- phyloseq_to_deseq2(ps_sub, stats::as.formula(paste("~", input$da_var)))
-    dds <- DESeq2::DESeq(dds, fitType = "parametric", quiet = TRUE)
-    res <- DESeq2::results(dds, contrast = c(input$da_var, input$da_comp_level, input$da_ref_level))
-
-    res_df <- as.data.frame(res)
-    res_df$Taxon <- rownames(res_df)
-
-    if (!is.null(tax_table(ps_sub, errorIfNULL = FALSE))) {
-      tax_df <- as.data.frame(tax_table(ps_sub), stringsAsFactors = FALSE)
-      tax_df$Taxon <- rownames(tax_df)
-      res_df <- merge(res_df, tax_df, by = "Taxon", all.x = TRUE, sort = FALSE)
-    }
-
-    res_df <- res_df[order(res_df$padj, na.last = TRUE), ]
-    res_df
-  })
-
-  output$deseq_status <- renderPrint({
-    if (!requireNamespace("DESeq2", quietly = TRUE)) {
-      cat("DESeq2 package is not installed. Install with BiocManager::install('DESeq2').\n")
-      return(invisible(NULL))
-    }
-    cat("Ready. Choose variable and levels, then click Run DESeq2.\n")
-  })
-
-  output$deseq_table <- renderTable({
-    req(input$run_deseq > 0)
-    head(deseq_results(), 25)
-  }, rownames = FALSE)
-
-  output$volcano_plot <- renderPlot({
-    req(input$run_deseq > 0)
-    res_df <- deseq_results()
-    req(nrow(res_df) > 0)
-
-    res_df$significant <- ifelse(!is.na(res_df$padj) & res_df$padj < 0.05, "FDR < 0.05", "NS")
-
-    ggplot(res_df, aes(x = log2FoldChange, y = -log10(padj), color = significant)) +
-      geom_point(alpha = 0.7) +
-      scale_color_manual(values = c("FDR < 0.05" = "red", "NS" = "grey50")) +
-      theme_bw(base_size = 12) +
-      labs(
-        title = "Differential abundance volcano plot",
-        x = paste0("log2 fold change (", input$da_comp_level, " vs ", input$da_ref_level, ")"),
-        y = "-log10 adjusted p-value",
-        color = "Significance"
-      )
-  })
-
   output$core_heatmap <- renderPlot({
+    require_tab("Core microbiome")
     req(input$core_tax_rank)
     ps_rel_local <- ps_rel()
     otu <- as(otu_table(ps_rel_local), "matrix")
@@ -1179,46 +1095,6 @@ app_server <- function(input, output, session) {
       )
   })
 
-  draw_rarefaction_plot <- function() {
-    req(input$group_var)
-    otu_mat <- otu_sample_matrix()
-    validate(need(nrow(otu_mat) >= 2, "Need at least 2 samples for rarefaction."))
-    validate(need(ncol(otu_mat) >= 2, "Need at least 2 taxa for rarefaction."))
-    validate(need(min(rowSums(otu_mat)) > 1, "Not enough reads per sample to compute rarefaction curves."))
-
-    meta_df <- as(sample_data(ps_obj()), "data.frame")
-    group_vals <- as.factor(as.character(meta_df[rownames(otu_mat), input$group_var]))
-    group_levels <- levels(group_vals)
-    group_palette <- setNames(rainbow(max(1, length(group_levels))), group_levels)
-    line_cols <- group_palette[as.character(group_vals)]
-
-    step_size <- max(1, floor(min(rowSums(otu_mat)) / 40))
-
-    vegan::rarecurve(
-      otu_mat,
-      step = step_size,
-      sample = min(rowSums(otu_mat)),
-      col = line_cols,
-      label = FALSE,
-      xlab = "Sequencing depth",
-      ylab = "Observed taxa",
-      main = "Rarefaction curves"
-    )
-
-    legend(
-      "bottomright",
-      legend = names(group_palette),
-      col = group_palette,
-      lty = 1,
-      bty = "n",
-      cex = 0.8
-    )
-  }
-
-  output$rarefaction_plot <- renderPlot({
-    draw_rarefaction_plot()
-  })
-
   core_table <- reactive({
     req(input$core_tax_rank)
     ps_rel_local <- ps_rel()
@@ -1246,28 +1122,6 @@ app_server <- function(input, output, session) {
     out[order(out$TaxaLabel, out$Sample), , drop = FALSE]
   })
 
-  volcano_plot_obj <- reactive({
-    req(input$run_deseq > 0)
-    res_df <- deseq_results()
-    req(nrow(res_df) > 0)
-    res_df$significant <- ifelse(!is.na(res_df$padj) & res_df$padj < 0.05, "FDR < 0.05", "NS")
-
-    ggplot(res_df, aes(x = log2FoldChange, y = -log10(padj), color = significant)) +
-      geom_point(alpha = 0.7) +
-      scale_color_manual(values = c("FDR < 0.05" = "red", "NS" = "grey50")) +
-      theme_bw(base_size = 12) +
-      labs(
-        title = "Differential abundance volcano plot",
-        x = paste0("log2 fold change (", input$da_comp_level, " vs ", input$da_ref_level, ")"),
-        y = "-log10 adjusted p-value",
-        color = "Significance"
-      )
-  })
-
-  output$volcano_plot <- renderPlot({
-    volcano_plot_obj()
-  })
-
   output$download_sample_table <- downloadHandler(
     filename = function() paste0("sample_metadata_", Sys.Date(), ".csv"),
     content = function(file) write.csv(sample_table_df(), file, row.names = TRUE)
@@ -1281,15 +1135,6 @@ app_server <- function(input, output, session) {
   output$download_alpha_plot <- downloadHandler(
     filename = function() paste0("alpha_diversity_", Sys.Date(), ".png"),
     content = function(file) ggsave(file, plot = alpha_plot_obj(), width = 9, height = 5, dpi = 300)
-  )
-
-  output$download_rarefaction_plot <- downloadHandler(
-    filename = function() paste0("rarefaction_", Sys.Date(), ".png"),
-    content = function(file) {
-      png(file, width = 1200, height = 800, res = 120)
-      draw_rarefaction_plot()
-      dev.off()
-    }
   )
 
   output$download_alpha_table <- downloadHandler(
@@ -1334,16 +1179,6 @@ app_server <- function(input, output, session) {
   output$download_permanova_table <- downloadHandler(
     filename = function() paste0("permanova_", Sys.Date(), ".csv"),
     content = function(file) write.csv(permanova_table(), file, row.names = FALSE)
-  )
-
-  output$download_deseq_table <- downloadHandler(
-    filename = function() paste0("deseq2_results_", Sys.Date(), ".csv"),
-    content = function(file) write.csv(deseq_results(), file, row.names = FALSE)
-  )
-
-  output$download_volcano_plot <- downloadHandler(
-    filename = function() paste0("volcano_", Sys.Date(), ".png"),
-    content = function(file) ggsave(file, plot = volcano_plot_obj(), width = 8, height = 5, dpi = 300)
   )
 
   output$download_core_plot <- downloadHandler(

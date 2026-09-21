@@ -1,6 +1,6 @@
 # Created by: Bharat Mishra
 # Edited by: Elizabeth Brooks
-# Modified: 15 June 2026
+# Modified: 21 Sept 2026
 
 # install any missing packages
 options(repos = c(CRAN = "https://cloud.r-project.org/"))
@@ -29,11 +29,19 @@ options(shiny.maxRequestSize = 500 * 1024^2)
 
 rank_names_default <- c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species")
 
+default_data_dirs <- file.path(getwd(), c("data", "../data"))
+find_default_data_file <- function(filename) {
+  candidates <- file.path(default_data_dirs, filename)
+  existing <- candidates[file.exists(candidates)]
+  if (length(existing) > 0) existing[1] else candidates[1]
+}
+
 default_paths <- list(
-  otu = "data/otu_table.csv",
-  tax = "data/taxonomy_table.csv",
-  meta = "data/sample_metadata.csv",
-  biom = "data/centrifuge_reports.biom"
+  otu = find_default_data_file("otu_table.csv"),
+  tax = find_default_data_file("taxonomy_table.csv"),
+  meta = find_default_data_file("sample_metadata.csv"),
+  biom = find_default_data_file("centrifuge_reports.biom"),
+  picrust = find_default_data_file("qiimeandpicrust_oyester/pred_metagenome_unstrat_descrip.tsv")
 )
 
 ggpicrust_cache_dir <- file.path(getwd(), "ggpicrust2_cache")
@@ -487,7 +495,7 @@ app_ui <- fluidPage(
         choices = c("CSV tables" = "csv", "BIOM" = "biom", "QIIME2 feature table" = "qiime2"),
         selected = "csv"
       ),
-      checkboxInput("use_defaults", "Use workspace default files", value = TRUE),
+      checkboxInput("use_defaults", "Use workspace default files", value = FALSE),
       conditionalPanel(
         condition = "input.data_mode == 'csv'",
         fileInput("otu_file", "OTU/ASV count table (CSV)", accept = ".csv"),
@@ -626,7 +634,7 @@ app_ui <- fluidPage(
                 "DAA method",
                 #choices = c("LinDA", "ALDEx2", "DESeq2", "edgeR"),
                 choices = c("LinDA", "ALDEx2", "edgeR"),
-                selected = "LinDA"
+                selected = "edgeR"
               )
             ),
             column(
@@ -640,7 +648,23 @@ app_ui <- fluidPage(
             ),
             column(
               4,
-              checkboxInput("picrust_ko_to_kegg", "Convert KO to KEGG pathways", value = TRUE)
+              checkboxInput("picrust_ko_to_kegg", "Convert KO to KEGG pathways", value = FALSE),
+              numericInput(
+                "picrust_max_features",
+                "Maximum features for analysis",
+                value = 2000,
+                min = 100,
+                max = 100000,
+                step = 100
+              ),
+              numericInput(
+                "picrust_plot_features",
+                "Top features for errorbar and heatmap",
+                value = 10,
+                min = 1,
+                max = 100,
+                step = 1
+              )
             )
           ),
           actionButton("run_picrust", "Run ggpicrust2", class = "btn-primary"),
@@ -651,12 +675,12 @@ app_ui <- fluidPage(
           downloadButton("download_picrust_table", "Download ggpicrust2 table"),
           tags$br(),
           tags$br(),
-          plotOutput("picrust_errorbar_plot", height = 500),
-          downloadButton("download_picrust_errorbar_plot", "Download errorbar plot"),
-          tags$br(),
-          tags$br(),
           plotOutput("picrust_pca_plot", height = 500),
           downloadButton("download_picrust_pca_plot", "Download PCA plot"),
+          tags$br(),
+          tags$br(),
+          plotOutput("picrust_errorbar_plot", height = 500),
+          downloadButton("download_picrust_errorbar_plot", "Download errorbar plot"),
           tags$br(),
           tags$br(),
           plotOutput("picrust_heatmap_plot", height = 520),
@@ -780,7 +804,7 @@ app_server <- function(input, output, session) {
       return(input$picrust_file$datapath)
     }
 
-    default_picrust <- "qiimeandpicrust_oyester/pred_metagenome_unstrat_descrip.tsv"
+    default_picrust <- default_paths$picrust
     if (isTRUE(input$use_defaults) && file.exists(default_picrust)) {
       return(default_picrust)
     }
@@ -818,7 +842,16 @@ app_server <- function(input, output, session) {
       stop("PICRUSt2 table has fewer than 2 numeric sample columns after filtering.")
     }
 
-    sanitize_count_table(ab, table_label = "PICRUSt2 table")
+    numeric_abundance <- lapply(ab, function(col) {
+      value <- trimws(as.character(col))
+      value[value %in% c("", "NA", "N/A", "na", "n/a", "NULL", "null")] <- NA_character_
+      suppressWarnings(as.numeric(value))
+    })
+    numeric_abundance <- as.data.frame(numeric_abundance, check.names = FALSE)
+    abundance_matrix <- as.matrix(numeric_abundance)
+    abundance_matrix[is.na(abundance_matrix)] <- 0
+    rownames(abundance_matrix) <- rownames(ab)
+    abundance_matrix
   }
 
   has_ko_to_kegg_reference <- function() {
@@ -1157,6 +1190,24 @@ app_server <- function(input, output, session) {
       stop("Need at least 2 samples with non-missing group values for ggpicrust2.")
     }
 
+    min_prevalence <- max(2L, ceiling(0.1 * ncol(abundance)))
+    keep_features <- rowSums(abundance > 0) >= min_prevalence
+    n_features_before_filter <- nrow(abundance)
+    abundance <- abundance[keep_features, , drop = FALSE]
+    if (nrow(abundance) == 0) {
+      stop("No PICRUSt2 features remain after prevalence filtering.")
+    }
+
+    max_features <- suppressWarnings(as.integer(input$picrust_max_features))
+    if (is.na(max_features) || max_features < 100) {
+      max_features <- 100L
+    }
+    if (nrow(abundance) > max_features) {
+      feature_score <- rowMeans(abundance)
+      keep_features <- order(feature_score, decreasing = TRUE)[seq_len(max_features)]
+      abundance <- abundance[keep_features, , drop = FALSE]
+    }
+
     meta_gg <- data.frame(
       sample_name = meta$sample_name,
       GroupVar = as.character(meta[[input$picrust_group_var]]),
@@ -1188,6 +1239,27 @@ app_server <- function(input, output, session) {
 
     analysis_abundance <- abundance
     notes <- character(0)
+    n_features_removed <- n_features_before_filter - nrow(abundance)
+    if (n_features_removed > 0) {
+      notes <- c(
+        notes,
+        sprintf(
+          "Removed %d features present in fewer than %d samples before ggpicrust2.",
+          n_features_removed,
+          min_prevalence
+        )
+      )
+    }
+    n_features_capped <- n_features_before_filter - nrow(abundance) - n_features_removed
+    if (n_features_capped > 0) {
+      notes <- c(
+        notes,
+        sprintf(
+          "Limited analysis to the %d highest-mean-abundance features to control memory use.",
+          max_features
+        )
+      )
+    }
     effective_ko_to_kegg <- identical(input$picrust_pathway, "KO") && isTRUE(input$picrust_ko_to_kegg)
     if (effective_ko_to_kegg && !has_ko_to_kegg_reference()) {
       notes <- c(
@@ -1341,16 +1413,38 @@ app_server <- function(input, output, session) {
     x_lab_value <- if (base$effective_ko_to_kegg) "pathway_name" else "description"
     order_value <- if (base$effective_ko_to_kegg) "pathway_class" else "group"
 
+    daa_features <- unique(as.character(plot_results$feature))
+    daa_p_values <- vapply(daa_features, function(feature) {
+      values <- plot_results$p_adjust[plot_results$feature == feature]
+      values <- values[is.finite(values)]
+      if (length(values) == 0) Inf else min(values)
+    }, numeric(1))
+    plot_features <- intersect(
+      daa_features[order(daa_p_values)],
+      rownames(analysis_abundance)
+    )
+    top_plot_features <- suppressWarnings(as.integer(input$picrust_plot_features))
+    if (is.na(top_plot_features) || top_plot_features < 1) {
+      top_plot_features <- 10L
+    }
+    plot_features <- head(plot_features, top_plot_features)
+    plot_results_top <- plot_results[plot_results$feature %in% plot_features, , drop = FALSE]
+    if (length(plot_features) == 0) {
+      notes <- c(notes, "No DAA features were available for the selected plots.")
+    } else {
+      notes <- c(notes, sprintf("Plotting the top %d DAA-ranked features.", length(plot_features)))
+    }
+
     errorbar_plot <- tryCatch(
       {
         ggpicrust2::pathway_errorbar(
-          abundance = analysis_abundance,
-          daa_results_df = plot_results,
+          abundance = analysis_abundance[plot_features, , drop = FALSE],
+          daa_results_df = plot_results_top,
           Group = meta_gg$GroupVar,
           ko_to_kegg = base$effective_ko_to_kegg,
           p_values_threshold = 0.05,
           order = order_value,
-          select = NULL,
+          select = plot_features,
           p_value_bar = TRUE,
           colors = NULL,
           x_lab = x_lab_value
@@ -1360,13 +1454,13 @@ app_server <- function(input, output, session) {
         notes <<- c(notes, paste0("Errorbar plot at FDR<0.05 unavailable: ", conditionMessage(e)))
         tryCatch(
           ggpicrust2::pathway_errorbar(
-            abundance = analysis_abundance,
-            daa_results_df = plot_results,
+            abundance = analysis_abundance[plot_features, , drop = FALSE],
+            daa_results_df = plot_results_top,
             Group = meta_gg$GroupVar,
             ko_to_kegg = base$effective_ko_to_kegg,
             p_values_threshold = 1,
             order = order_value,
-            select = NULL,
+            select = plot_features,
             p_value_bar = TRUE,
             colors = NULL,
             x_lab = x_lab_value
@@ -1379,16 +1473,11 @@ app_server <- function(input, output, session) {
       }
     )
 
-    sig_features <- plot_results$feature[
-      !is.na(plot_results$p_adjust) & plot_results$p_adjust < 0.05
-    ]
-    sig_features <- intersect(sig_features, rownames(analysis_abundance))
-
     heatmap_plot <- NULL
-    if (length(sig_features) > 0) {
+    if (length(plot_features) > 0) {
       heatmap_plot <- tryCatch(
         ggpicrust2::pathway_heatmap(
-          abundance = analysis_abundance[sig_features, , drop = FALSE],
+          abundance = analysis_abundance[plot_features, , drop = FALSE],
           metadata = meta_gg,
           group = "GroupVar"
         ),
@@ -1398,7 +1487,7 @@ app_server <- function(input, output, session) {
         }
       )
     } else {
-      notes <- c(notes, "No significant pathways at FDR < 0.05; heatmap not generated.")
+      notes <- c(notes, "No DAA features available; heatmap not generated.")
     }
 
     list(
@@ -1407,7 +1496,7 @@ app_server <- function(input, output, session) {
       errorbar = errorbar_plot,
       pca = base$pca,
       heatmap = heatmap_plot,
-      sig_features = sig_features,
+      plot_features = plot_features,
       n_samples = base$n_samples,
       n_features = base$n_features,
       notes = notes,
@@ -1464,7 +1553,11 @@ app_server <- function(input, output, session) {
     cat(sprintf("Features used: %d\n", res$n_features))
     cat(sprintf("DAA rows: %d\n", nrow(res$daa)))
     cat(sprintf("Annotated rows: %d\n", nrow(res$annotated)))
-    cat(sprintf("Significant pathways (FDR < 0.05): %d\n", length(res$sig_features)))
+    significant_features <- unique(res$annotated$feature[
+      !is.na(res$annotated$p_adjust) & res$annotated$p_adjust < 0.05
+    ])
+    cat(sprintf("Significant pathways (FDR < 0.05): %d\n", length(significant_features)))
+    cat(sprintf("Features plotted: %d\n", length(res$plot_features)))
     if (!is.null(res$reference)) {
       cat(sprintf("Reference level: %s\n", res$reference))
     }
