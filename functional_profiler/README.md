@@ -1,6 +1,6 @@
-# Functional Profiler: DESeq2 & PICRUSt2
+# Functional Profiler: PICRUSt2
 
-**Differential abundance and functional pathway analysis**
+**Functional differential analysis and pathway visualization**
 
 ## Launch
 
@@ -19,30 +19,19 @@ shiny::runApp()
 - Sample metadata preview
 - Taxonomy information
 
-### Differential Abundance (DESeq2)
-- Tests which taxa differ between two groups
-- **Requirements**: 2+ groups, ideally with replication (2+ samples per group)
-- **Output**: 
-  - Log2 fold-change (effect size)
-  - p-value and adjusted p-value (FDR)
-  - Volcano plot: combines effect size & statistical evidence
-- **Interpretation**: Look for taxa with both large fold-change AND low adj. p-value
-
 ### Functional Profiler (ggpicrust2)
 - Analyzes metabolic/functional pathways from PICRUSt2 predictions
 - **Pathway Types**:
   - **KO** (KEGG Ortholog): Individual genes/proteins
   - **MetaCyc**: Metabolic pathways
   - **EC** (Enzyme Commission): Enzyme functions
-- **DAA Methods** (Differential Abundance Analysis):
+- **DAA Methods** (pathway-level differential abundance analysis):
   - LinDA (default, conservative)
   - ALDEx2 (compositional data specialist)
-  - DESeq2 (taxa-based)
-  - edgeR (RNA-seq inspired)
+  - edgeR (default; RNA-seq inspired)
 - **Features**:
-  - Errorbar plots showing significant pathways
   - PCA to visualize functional profiles
-  - Heatmaps of significant pathways
+  - Errorbar plots and heatmaps of top DAA-ranked pathways
   - KO-to-KEGG pathway annotation
 - **Output**: Annotated results table + publication-ready plots
 
@@ -54,7 +43,9 @@ shiny::runApp()
   - CSV tables
   - BIOM file
   - QIIME2 feature table
-- **Use defaults**: Loads pre-configured files
+- **Use defaults**: Optional; loads pre-configured files when selected
+- **Maximum features for analysis**: Defaults to 2,000 to limit memory use
+- **Top features for errorbar and heatmap**: Defaults to 10 DAA-ranked features
 
 ## Step-by-Step Workflow
 
@@ -64,24 +55,17 @@ shiny::runApp()
 3. Click "Load / Reload data"
 4. Check Data Summary tab for row/column counts
 
-### 2. DESeq2 Analysis (Optional)
-1. Go to "Differential abundance" tab
-2. Select a metadata variable with ≥2 groups
-3. Choose reference group (baseline)
-4. Choose comparison group (vs. reference)
-5. Click "Run DESeq2"
-6. Review volcano plot and results table
-7. Download table and plot if desired
-
-### 3. ggpicrust2 Analysis
+### 2. ggpicrust2 Analysis
 1. Go to "Functional Profiler" tab
 2. Upload PICRUSt2 abundance table (pred_metagenome_unstrat_descrip.tsv or similar)
 3. Select grouping variable (same metadata column)
 4. (Optional) Select reference level
 5. Choose pathway type: KO (default), MetaCyc, or EC
 6. Choose DAA method (default: LinDA)
-7. (Optional) Enable KO-to-KEGG conversion for KEGG pathway names
-8. Click "Run ggpicrust2"
+7. Choose a DAA method; `edgeR` is selected by default
+8. (Optional) Enable KO-to-KEGG conversion for KEGG pathway names
+9. Set the maximum analysis features and the number of plotted top features
+10. Click "Run ggpicrust2"
 9. Review results:
    - Table shows annotated differential results
    - Errorbar plot shows significant pathways with effect size
@@ -137,15 +121,6 @@ qiime picrust2 full-pipeline ...
 
 ## Interpretation Guide
 
-### DESeq2 Results
-- **log2FoldChange > 0**: Higher in comparison group
-- **log2FoldChange < 0**: Higher in reference group
-- **padj < 0.05**: Statistically significant after multiple testing correction
-- **Volcano plot quadrants**:
-  - **Top-left**: High in reference, significant
-  - **Top-right**: High in comparison, significant
-  - **Bottom**: Not significant (gray points)
-
 ### ggpicrust2 Results
 
 #### Errorbar Plot
@@ -161,7 +136,7 @@ qiime picrust2 full-pipeline ...
 - Separation = distinct functional profiles between groups
 
 #### Heatmap
-- Rows: Significant pathways
+- Rows: Selected top DAA-ranked pathways
 - Columns: Samples
 - Color intensity: Abundance
 - Hierarchical clustering groups similar samples/pathways
@@ -175,11 +150,9 @@ qiime picrust2 full-pipeline ...
 
 ## Key Concepts
 
-**Differential Abundance**: Testing whether taxa/pathways differ in abundance between groups
+**Differential Abundance Analysis (DAA)**: Testing whether predicted pathways differ in abundance between groups
 
 **DAA (Differential Abundance Analysis)**: Statistical method for this test
-
-**DESeq2**: Uses negative binomial GLM; accounts for variance
 
 **ggpicrust2**: Applies DAA methods to functional pathways
 
@@ -187,8 +160,6 @@ qiime picrust2 full-pipeline ...
 
 **PICRUSt2**: "Prediction of Metabolic Intermediate Genes by Functional Tools"
 - Predicts metabolic genes/pathways from 16S/ITS data
-
-**Volcano Plot**: Combines effect size (x-axis) and significance (y-axis)
 
 **Fold-Change**: Ratio of abundances between groups
 
@@ -230,8 +201,7 @@ qiime picrust2 full-pipeline ...
 ### Statistical Methods
 - **LinDA**: Conservative; recommended for small sample sizes
 - **ALDEx2**: Compositional specialist; good for 16S data
-- **DESeq2**: Powerful; requires replication
-- **edgeR**: Fast; good for large datasets
+- **edgeR**: Default; fast and suitable for larger feature tables
 
 ### KO-to-KEGG Conversion
 - Maps individual KO IDs → functional modules/pathways
@@ -253,7 +223,6 @@ All tables saved as:
 ## Citations
 
 This app uses:
-- **DESeq2**: Love et al. (2014) Genome Biology
 - **ggpicrust2**: Liang et al. (2023)
 - **PICRUSt2**: Douglas et al. (2020) mBio
 

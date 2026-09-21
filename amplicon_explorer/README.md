@@ -25,12 +25,6 @@ shiny::runApp()
 - Sample metadata preview
 - Taxonomy preview with confidence scores
 
-### Rarefaction Curves
-- Shows whether sequencing depth is sufficient
-- Curves plateau → good coverage
-- Curves rising steeply → could sequence deeper
-- Colored by group variable for comparison
-
 ### Alpha Diversity
 - **Observed**: Count of taxa detected
 - **Shannon**: Accounts for both richness and evenness
@@ -78,7 +72,7 @@ shiny::runApp()
   - CSV tables (OTU, taxonomy, metadata)
   - BIOM file
   - QIIME2 feature table
-- **Use defaults**: Loads pre-configured files from workspace
+- **Use defaults**: Optional; loads pre-configured files from workspace when selected
 - **Group/color variable**: Which metadata column to use for coloring plots
 - **Facet variable**: Optional second grouping for taxa plot
 - **Taxonomic rank**: Which level to show (Phylum, Genus, etc.)
@@ -129,10 +123,6 @@ Sample3,Skin,Placebo,5
 
 ## Interpretation Tips
 
-### Rarefaction
-- If curves plateau = confident in observed diversity
-- If steep = missing rare taxa; sequence more
-
 ### Alpha Diversity
 - High Shannon = many taxa, evenly distributed
 - Low Shannon = few taxa or one dominates
@@ -173,8 +163,6 @@ Sample3,Skin,Placebo,5
 **OTU/ASV**: Operational Taxonomic Unit / Amplicon Sequence Variant (the unit being counted)
 
 **Taxonomy**: Classification of each OTU/ASV
-
-**Rarefaction**: Subsampling to standardize sequencing depth
 
 **PERMANOVA**: Permutational MANOVA; tests if groups differ in overall composition
 

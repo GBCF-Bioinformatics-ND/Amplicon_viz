@@ -1,153 +1,90 @@
 # Amplicon Analysis & Functional Profiling Suite
 
-This directory contains two specialized Shiny applications for microbiome analysis, separated by analytical focus.
+This project contains two specialized Shiny applications for microbiome analysis.
 
 ## Directory Structure
 
 ```
 Amplicon_viz/
-├── amplicon_explorer/          # Standalone exploratory phyloseq-based app
-│   ├── app.R                   # 16S/ITS diversity and composition analysis
-│   └── README.md
-├── functional_profiler/        # Standalone functional analysis app (DESeq2 + PICRUSt2)
-│   ├── app.R                   # Differential abundance & metabolic pathways
-│   └── README.md
-├── data/                       # All input datasets
-│   ├── otu_table.csv           # OTU/ASV count table
-│   ├── taxonomy_table.csv      # Taxonomy assignments
-│   ├── sample_metadata.csv     # Sample metadata
-│   ├── centrifuge_reports.biom # BIOM-format centrifuge output
-│   └── qiimeandpicrust_oyester/# Oyster microbiome example data (QIIME2/PICRUSt2)
-├── ggpicrust2_cache/           # Cached KO reference data (ko_reference.rds)
+├── amplicon_explorer/          # Taxonomic diversity and community structure
+├── functional_profiler/        # PICRUSt2 functional pathway analysis
+├── data/                       # Shared input datasets
+├── ggpicrust2_cache/           # Cached KO reference data
 ├── Amplicon_viz.Rproj          # RStudio project file
-├── index.html                  # Project landing page
-└── README.md                   # This file
+└── README.md
 ```
 
 ## Quick Start
 
-### Launch Root App (all-in-one)
-```r
-# From the Amplicon_viz/ project root:
-shiny::runApp()
-```
+From the project root:
 
-### Launch Amplicon Explorer (standalone)
 ```r
 shiny::runApp("amplicon_explorer")
-```
-
-### Launch Functional Profiler (standalone)
-```r
 shiny::runApp("functional_profiler")
 ```
 
-## What Each App Does
+## Amplicon Explorer
 
-### 🔬 Amplicon Explorer
-**Focus**: Taxonomic diversity and community composition analysis
+The explorer focuses on taxonomic diversity and community structure.
 
-**Analyses Included**:
-- Data Summary (sample counts, read depth, taxonomy overview)
-- Rarefaction curves (sequencing depth assessment)
-- Alpha diversity (Shannon, Simpson, Observed richness)
-- Beta ordination (NMDS, PCoA with Bray-Curtis/Jaccard)
-- Taxa composition (stacked bar charts)
-- Hierarchical clustering (UPGMA dendrograms)
-- PERMANOVA (community composition testing)
-- Core microbiome (prevalence & abundance filtering)
+Analyses include:
 
-**Input Data**:
-- OTU/ASV count table (CSV)
-- Taxonomy table (CSV)
-- Sample metadata (CSV)
-- Or: BIOM format file
-- Or: QIIME2 feature table
+- Data summary, sample metadata, and taxonomy previews
+- Alpha diversity: Observed, Shannon, and Simpson
+- Beta ordination: NMDS or PCoA with Bray-Curtis, Jaccard, or Euclidean distance
+- Taxa composition with top-taxa grouping
+- Hierarchical clustering
+- PERMANOVA
+- Core microbiome prevalence and abundance filtering
 
-**Output**: Tables and plots for download
+It accepts CSV tables, BIOM files, and QIIME2 feature tables. Rarefaction and
+taxonomic differential-abundance analysis are not included.
 
----
+## Functional Profiler
 
-### 🧬 Functional Profiler  
-**Focus**: Differential functional analysis and metabolic pathways
+The functional profiler analyzes PICRUSt2 predicted functions with ggpicrust2.
 
-**Analyses Included**:
-- Data Summary (phyloseq object overview)
-- Differential Abundance (DESeq2-based, with volcano plots)
-- Functional Pathway Analysis (ggpicrust2-based):
-  - KO (KEGG Ortholog) pathways
-  - MetaCyc pathways
-  - EC (Enzyme Commission) numbers
-  - KO-to-KEGG conversion
-  - Multiple DAA methods (LinDA, ALDEx2, DESeq2, edgeR)
-  - Errorbar plots, PCA, heatmaps for results
+Supported pathway types:
 
-**Input Data**:
-- OTU/ASV count table (CSV) - for DESeq2
-- Sample metadata (CSV)
-- PICRUSt2 functional abundance table (TSV/TXT) - for ggpicrust2
-  - Example: `pred_metagenome_unstrat_descrip.tsv`
+- KO (KEGG Ortholog)
+- MetaCyc
+- EC (Enzyme Commission)
 
-**Output**: Statistical tables, annotated results, pathway plots
+DAA methods include LinDA, ALDEx2, and edgeR. `edgeR` is selected by default.
+KO-to-KEGG conversion is optional and disabled by default.
 
----
+The default maximum analysis size is 2,000 features. Errorbar and heatmap plots
+use the top 10 DAA-ranked features by default; both settings can be adjusted in
+the app.
 
-## Key Features
+## Shared Data Requirements
 
-✅ **Modular Design** - Each app focused on a specific analytical question
-✅ **Data Flexibility** - Multiple input formats (CSV, BIOM, QIIME2)
-✅ **Publication-Ready Plots** - High-resolution downloads
-✅ **Detailed Help Blocks** - Guidance within each tab
-✅ **Robust Error Handling** - Clear messages if data is missing/malformed
+- OTU/ASV table: feature IDs in the first column and sample IDs in the remaining columns
+- Taxonomy table: feature IDs matching the OTU/ASV table
+- Sample metadata: sample IDs matching the count-table columns plus grouping variables
+- PICRUSt2 abundance table: functional IDs and numeric sample-abundance columns
 
-## Data Requirements
-
-### For Amplicon Explorer
-- Sample metadata MUST have ≥2 samples and ≥1 grouping variable
-- OTU/taxonomy tables MUST have overlapping sample/feature IDs
-- Minimum 2 taxa and 2 samples after filtering
-
-### For Functional Profiler
-- Phyloseq requirements (above)
-- For DESeq2: grouping variable with ≥2 levels, ideally with replication
-- For ggpicrust2: PICRUSt2 output table with sample IDs matching metadata
-  - Row names: functional IDs (KO, MetaCyc pathway, EC number)
-  - Column names: sample IDs matching loaded metadata
-
-## Recommended Workflow
-
-1. **Start with Amplicon Explorer** to understand:
-   - Sample/taxa counts and quality
-   - Which groups differ in community composition
-   - Which taxa are dominant
-
-2. **Then use Functional Profiler** to ask:
-   - Which specific taxa or pathways differ?
-   - What metabolic functions are enriched/depleted?
-   - How do predicted metabolic capabilities differ?
+Sample IDs must match exactly after normalization where applicable. Grouping
+variables should contain at least two groups, with replication preferred for DAA.
 
 ## Shared Resources
 
-All apps read data from the `data/` directory relative to the project root:
-- `data/otu_table.csv`, `data/taxonomy_table.csv`, `data/sample_metadata.csv`, `data/centrifuge_reports.biom`
-- `ggpicrust2_cache/ko_reference.rds` — cached KO reference data (speeds up pathway lookups)
+- `data/otu_table.csv`
+- `data/taxonomy_table.csv`
+- `data/sample_metadata.csv`
+- `data/centrifuge_reports.biom`
+- `ggpicrust2_cache/ko_reference.rds`
 
 ## Troubleshooting
 
-**"Package X not installed"** → Install with:
-```r
-install.packages("package_name")      # CRAN packages
-BiocManager::install("package_name")  # Bioconductor packages
-```
+**Fewer than two overlapping samples**: Check sample IDs across the count table,
+metadata, and PICRUSt2 table.
 
-**"Fewer than 2 overlapping samples"** → Check that sample IDs in OTU table match metadata exactly (case-sensitive)
+**No results from ggpicrust2**: Choose a grouping variable with at least two
+groups and replicated samples, then try a different DAA method or feature filter.
 
-**"No variance in grouping variable"** → Ensure your grouping variable has ≥2 different values
-
-For more details, see app-specific README files in each directory.
-
----
+**Missing package**: Install CRAN packages with `install.packages()` and
+Bioconductor packages with `BiocManager::install()`.
 
 **Created**: April 2026  
 **Framework**: R Shiny  
-**Primary Packages**: phyloseq, DESeq2, ggpicrust2, tidyverse
