@@ -524,17 +524,17 @@ app_ui <- fluidPage(
           "Guide",
           tags$br(),
           tags$h3("How To Use This App"),
-          tags$p("This app is designed for exploratory microbiome analysis of 16S or ITS data. Each tab answers a different biological question. Start with the data summary, then move from simple description to more advanced comparison tests."),
+          tags$p("This app explores amplicon count tables, taxonomy, and sample metadata to describe within-sample diversity, between-sample community structure, taxonomic composition, and prevalent taxa."),
           analysis_help_block(
             "Recommended workflow",
             list(
-              "Load your count table, taxonomy table, and sample metadata, or use a BIOM file.",
-              "Check the Data summary tab first to make sure the number of samples and taxa look reasonable.",
-              "Use Alpha diversity to ask whether some groups have more within-sample diversity than others.",
-              "Use Beta ordination and Clustering to ask whether whole communities differ among groups.",
-              "Use Taxa composition to see which taxa dominate samples or groups.",
-              "Use PERMANOVA and Differential abundance only after checking the exploratory plots, because statistical output is easier to interpret when you already understand the data pattern.",
-              "Use Core microbiome to identify taxa that are common across many samples."
+              "Load an OTU/ASV table, taxonomy table, and metadata file, or load a BIOM file with optional metadata.",
+              "Check the Data summary tab for sample counts, feature counts, sequencing depth, and taxonomy availability.",
+              "Use Alpha diversity to compare richness and evenness within individual samples.",
+              "Use Beta ordination, clustering, and PERMANOVA to examine whole-community differences between samples or groups.",
+              "Use Taxa composition to inspect relative-abundance patterns at a selected taxonomic rank.",
+              "Use Core microbiome to find taxa that meet a chosen prevalence and abundance threshold.",
+              "Treat plots as exploratory evidence and interpret them with replication, effect size, and statistical results."
             )
           ),
           analysis_help_block(
@@ -545,18 +545,19 @@ app_ui <- fluidPage(
               "Alpha diversity describes diversity within one sample.",
               "Beta diversity describes differences between samples.",
               "An ordination plot places similar samples close together and dissimilar samples farther apart.",
-              "A p-value is evidence against a null hypothesis, but biological interpretation should not rely on p-values alone.",
-              "Adjusted p-values control for multiple testing and are more appropriate when many taxa or pathways are tested at once."
+              "Relative abundance is the proportion of reads assigned to each taxon within a sample; it is not the same as absolute cell abundance.",
+              "A p-value measures evidence against a null hypothesis, not the size or biological importance of an effect.",
+              "PERMANOVA can reflect differences in group centroids or within-group dispersion, so inspect ordination and replication together."
             )
           ),
           analysis_help_block(
             "Good practice for interpretation",
             list(
               "Look for consistent patterns across multiple plots instead of relying on one result.",
-              "Always interpret statistics together with effect size, group separation, and sample size.",
+              "Interpret statistics together with effect size, group separation, dispersion, and sample size.",
               "Be careful when groups have very different numbers of samples.",
               "A statistically significant result does not always mean a biologically large effect.",
-              "Taxonomic labels can be incomplete; an 'Unassigned' label does not necessarily mean the feature is unimportant."
+              "Taxonomic labels can be incomplete; an unassigned feature is still included in abundance calculations."
             )
           )
         ),
@@ -566,11 +567,11 @@ app_ui <- fluidPage(
           analysis_help_block(
             "What this tab shows",
             list(
-              "The total number of samples and taxa in the current dataset.",
-              "The total number of reads after filtering.",
-              "The taxonomic ranks available in your taxonomy table.",
-              "A preview of your sample metadata, which is used to color or group many of the plots.",
-              "A taxonomy preview table with Taxon/taxonomy and Confidence columns when available (for QIIME2 and compatible inputs)."
+              "The number of samples and features loaded after matching and filtering.",
+              "The total number of reads and sequencing depth represented in the current object.",
+              "The taxonomy ranks available for labeling composition plots.",
+              "A preview of the sample metadata used to color, group, and facet plots.",
+              "A taxonomy preview showing the labels associated with feature IDs."
             )
           ),
           verbatimTextOutput("summary_text"),
@@ -579,7 +580,7 @@ app_ui <- fluidPage(
           downloadButton("download_sample_table", "Download sample table"),
           tags$br(),
           tags$br(),
-          tags$h4("Taxonomy preview (includes Taxon and Confidence when available)"),
+          tags$h4("Taxonomy preview"),
           tableOutput("taxonomy_table"),
           downloadButton("download_taxonomy_table", "Download taxonomy table")
         ),
@@ -593,7 +594,7 @@ app_ui <- fluidPage(
               "Shannon diversity increases when a sample has both many taxa and a more even distribution among them.",
               "Simpson diversity gives more weight to dominant taxa.",
               "Each point is one sample. The boxplot summarizes the group.",
-              "If groups separate strongly, that suggests within-sample diversity differs among them."
+              "Differences between groups suggest different within-sample diversity; use the points and group sizes to assess consistency."
             )
           ),
           selectInput("alpha_measure", "Alpha metric", choices = c("Observed", "Shannon", "Simpson")),
@@ -607,11 +608,11 @@ app_ui <- fluidPage(
           analysis_help_block(
             "How to read ordination",
             list(
-              "Each point is one sample.",
-              "Samples that are close together have more similar community composition.",
-              "Samples that are far apart have more different community composition.",
-              "Bray-Curtis focuses on abundance differences, while Jaccard focuses more on presence/absence.",
-              "Clear group separation suggests community structure differs among groups, but overlap suggests weaker separation."
+              "Each point is one sample; the axes summarize distances among samples rather than individual taxa.",
+              "Samples that are close together have more similar community composition under the selected distance.",
+              "Samples that are far apart have more different community composition, but axis values are not direct abundance measurements.",
+              "Bray-Curtis uses abundance, Jaccard uses presence/absence, and Euclidean uses the numeric transformed table.",
+              "Group separation is exploratory; assess it alongside PERMANOVA and within-group spread."
             )
           ),
           fluidRow(
@@ -637,8 +638,8 @@ app_ui <- fluidPage(
               "Each bar is one sample.",
               "Colors represent taxa at the selected rank, such as phylum or genus.",
               "Bar height segments show relative abundance, not absolute count.",
-              "This plot is useful for identifying dominant taxa and broad community shifts.",
-              "The 'Other' category groups lower-abundance taxa so the plot stays readable."
+              "This plot is useful for identifying dominant taxa and broad relative-abundance shifts.",
+              "The 'Other' category groups lower-abundance taxa so the plot stays readable; it does not mean those taxa are absent."
             )
           ),
           plotOutput("taxa_plot", height = 520),
@@ -651,10 +652,11 @@ app_ui <- fluidPage(
           analysis_help_block(
             "How to read clustering",
             list(
-              "Samples connected by short branches are more similar to each other.",
-              "Samples that join only near the top of the tree are less similar.",
-              "Clustering helps you spot natural sample groupings or potential outliers.",
-              "This is an exploratory method, so branch patterns should be interpreted together with ordination and metadata."
+              "Samples connected by shorter branches are more similar under the selected distance.",
+              "Samples that join only near the top of the tree are less similar to the rest of the cluster.",
+              "Clustering can reveal sample groupings or potential outliers, but the tree is dependent on the distance and linkage method.",
+              "Terminal labels are colored by the selected metadata grouping variable; the legend identifies each group.",
+              "This is exploratory and should be interpreted together with ordination, metadata, and replication."
             )
           ),
           plotOutput("cluster_plot", height = 520),
@@ -669,8 +671,9 @@ app_ui <- fluidPage(
             list(
               "PERMANOVA tests whether overall community composition differs among groups.",
               "The R2 value estimates how much of the variation is explained by the grouping variable.",
-              "A small p-value suggests the groups differ more than expected by chance.",
-              "PERMANOVA is sensitive to differences in dispersion, so it should be interpreted together with ordination plots."
+              "A small p-value suggests group centroids differ more than expected under the permutation null model.",
+              "R2 is an effect-size-like measure of explained variation, not the percent of samples classified correctly.",
+              "PERMANOVA can also be sensitive to unequal within-group dispersion, so inspect ordination spread and group sizes."
             )
           ),
           verbatimTextOutput("permanova_text"),
@@ -685,8 +688,8 @@ app_ui <- fluidPage(
               "The core microbiome is the set of taxa found across many samples at or above a chosen abundance threshold.",
               "Prevalence threshold asks: in what fraction of samples must a taxon appear?",
               "Minimum abundance asks: how abundant must a taxon be before we count it as present?",
-              "The heatmap shows which core taxa are common across samples and how abundant they are.",
-              "Changing the taxonomic rank lets you summarize the core at the phylum, genus, or species level."
+              "The heatmap shows abundance patterns for taxa that pass both thresholds; it does not prove that they are biologically essential.",
+              "Changing the taxonomic rank changes how features are aggregated and labeled in the core summary."
             )
           ),
           uiOutput("core_rank_ui"),
@@ -905,6 +908,53 @@ app_server <- function(input, output, session) {
     hclust(dist_obj(), method = "average")
   })
 
+  draw_cluster_plot <- function() {
+    req(input$group_var)
+    hc <- cluster_obj()
+    meta_df <- as(sample_data(ps_rel()), "data.frame")
+    req(input$group_var %in% colnames(meta_df))
+
+    group_values <- trimws(as.character(meta_df[hc$labels, input$group_var]))
+    group_values[is.na(group_values) | group_values == ""] <- "Missing"
+    group_levels <- sort(unique(group_values))
+    group_colors <- setNames(grDevices::hcl.colors(length(group_levels), "Dark 3"), group_levels)
+    label_colors <- unname(group_colors[group_values[hc$order]])
+    ordered_labels <- hc$labels[hc$order]
+
+    old_par <- par(no.readonly = TRUE)
+    on.exit(par(old_par), add = TRUE)
+    par(mar = c(10, 4, 4, 2) + 0.1)
+    plot(
+      hc,
+      labels = FALSE,
+      main = paste("UPGMA clustering (", input$distance_method, ")", sep = ""),
+      xlab = "",
+      sub = "",
+      axes = FALSE
+    )
+    axis(2)
+    box()
+    text(
+      x = seq_along(ordered_labels),
+      y = par("usr")[3],
+      labels = ordered_labels,
+      col = label_colors,
+      srt = 90,
+      adj = 1,
+      xpd = NA,
+      cex = 0.8
+    )
+    legend(
+      "topright",
+      legend = names(group_colors),
+      col = unname(group_colors),
+      pch = 15,
+      title = input$group_var,
+      bty = "n",
+      cex = 0.8
+    )
+  }
+
   cluster_table <- reactive({
     hc <- cluster_obj()
     data.frame(
@@ -1011,12 +1061,12 @@ app_server <- function(input, output, session) {
 
   output$summary_text <- renderPrint({
     ps <- ps_obj()
-    cat("Amplicon object loaded successfully\n")
+    cat("Amplicon dataset loaded successfully\n")
     cat(sprintf("Samples: %d\n", nsamples(ps)))
-    cat(sprintf("Taxa: %d\n", ntaxa(ps)))
+    cat(sprintf("Features: %d\n", ntaxa(ps)))
     cat(sprintf("Assay type: %s\n", unique(sample_data(ps)$AssayType)))
     cat(sprintf("Total reads: %s\n", format(sum(sample_sums(ps)), big.mark = ",")))
-    cat("\nTaxonomic ranks:\n")
+    cat("\nAvailable taxonomy ranks:\n")
     print(rank_names(ps))
   })
 
@@ -1045,8 +1095,7 @@ app_server <- function(input, output, session) {
 
   output$cluster_plot <- renderPlot({
     require_tab("Clustering")
-    hc <- cluster_obj()
-    plot(hc, main = "UPGMA clustering (selected distance)", xlab = "", sub = "")
+    draw_cluster_plot()
   })
 
   output$permanova_text <- renderPrint({
@@ -1166,7 +1215,7 @@ app_server <- function(input, output, session) {
     filename = function() paste0("clustering_", Sys.Date(), ".png"),
     content = function(file) {
       png(file, width = 1200, height = 700, res = 120)
-      plot(cluster_obj(), main = "UPGMA clustering (selected distance)", xlab = "", sub = "")
+      draw_cluster_plot()
       dev.off()
     }
   )

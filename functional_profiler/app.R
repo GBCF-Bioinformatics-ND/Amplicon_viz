@@ -475,43 +475,10 @@ app_ui <- fluidPage(
   sidebarLayout(
     sidebarPanel(
       width = 3,
-      radioButtons(
-        "assay_type",
-        "Assay type",
-        choices = c("16S", "ITS"),
-        selected = "16S",
-        inline = TRUE
-      ),
-      selectInput(
-        "keep_kingdom",
-        "Kingdom filter",
-        choices = c("All", "Bacteria", "Fungi"),
-        selected = "All"
-      ),
-      tags$hr(),
-      radioButtons(
-        "data_mode",
-        "Input mode",
-        choices = c("CSV tables" = "csv", "BIOM" = "biom", "QIIME2 feature table" = "qiime2"),
-        selected = "csv"
-      ),
+      tags$h4("Load PICRUSt2 data"),
+      fileInput("picrust_file", "PICRUSt2 abundance table (txt/tsv)", accept = c(".txt", ".tsv")),
+      fileInput("meta_file", "Sample metadata (CSV)", accept = ".csv"),
       checkboxInput("use_defaults", "Use workspace default files", value = FALSE),
-      conditionalPanel(
-        condition = "input.data_mode == 'csv'",
-        fileInput("otu_file", "OTU/ASV count table (CSV)", accept = ".csv"),
-        fileInput("tax_file", "Taxonomy table (CSV)", accept = ".csv"),
-        fileInput("meta_file", "Sample metadata (CSV)", accept = ".csv")
-      ),
-      conditionalPanel(
-        condition = "input.data_mode == 'biom'",
-        fileInput("biom_file", "Feature table (BIOM)", accept = c(".biom", ".json")),
-        fileInput("biom_meta_file", "Sample metadata (CSV, optional)", accept = ".csv")
-      ),
-      conditionalPanel(
-        condition = "input.data_mode == 'qiime2'",
-        fileInput("qiime2_feature_file", "QIIME2 feature table (txt/tsv)", accept = c(".txt", ".tsv")),
-        fileInput("qiime2_meta_file", "Sample metadata (csv/txt/tsv)", accept = c(".csv", ".txt", ".tsv"))
-      ),
       actionButton("load_data", "Load / Reload data", class = "btn-primary"),
       tags$hr(),
       uiOutput("group_var_ui")
@@ -524,41 +491,36 @@ app_ui <- fluidPage(
           "Guide",
           tags$br(),
           tags$h3("How To Use This App"),
-          tags$p("This app is designed for exploratory microbiome analysis of 16S or ITS data. Each tab answers a different biological question. Start with the data summary, then move from simple description to more advanced comparison tests."),
+          tags$p("This app analyzes functional profiles predicted by PICRUSt2. It compares pathway or enzyme abundances across groups defined in your sample metadata."),
           analysis_help_block(
             "Recommended workflow",
             list(
-              "Load your count table, taxonomy table, and sample metadata, or use a BIOM file.",
-              "Check the Data summary tab first to make sure the number of samples and taxa look reasonable.",
-              "Use Alpha diversity to ask whether some groups have more within-sample diversity than others.",
-              "Use Beta ordination and Clustering to ask whether whole communities differ among groups.",
-              "Use Taxa composition to see which taxa dominate samples or groups.",
-              "Use PERMANOVA and Differential abundance only after checking the exploratory plots, because statistical output is easier to interpret when you already understand the data pattern.",
-              "Use Core microbiome to identify taxa that are common across many samples."
+              "Upload a PICRUSt2 abundance table and sample metadata in the left panel.",
+              "Click Load / Reload data, then confirm that sample IDs overlap between the two files.",
+              "Open the ggpicrust2 tab and select the metadata grouping variable and analysis options.",
+              "Click Run ggpicrust2 to perform pathway-level differential abundance analysis and generate figures.",
+              "Use the adjusted p-value together with the effect size and plots when interpreting results."
             )
           ),
           analysis_help_block(
-            "Important concepts",
+            "What the analysis tests",
             list(
-              "A taxon is a biological group such as a phylum, genus, or species.",
-              "Relative abundance means counts are converted to proportions within each sample, so samples can be compared even if sequencing depth differs.",
-              "Alpha diversity describes diversity within one sample.",
-              "Beta diversity describes differences between samples.",
-              "An ordination plot places similar samples close together and dissimilar samples farther apart.",
-              "A p-value is evidence against a null hypothesis, but biological interpretation should not rely on p-values alone.",
-              "Adjusted p-values control for multiple testing and are more appropriate when many taxa or pathways are tested at once."
+              "Each feature is a predicted function: a KO, MetaCyc pathway, or EC enzyme, depending on Pathway type.",
+              "DAA tests whether a function differs between the selected metadata groups.",
+              "The reference level is the baseline group; reported effects describe the other group relative to it.",
+              "The p-value measures evidence for a difference, while the BH-adjusted p-value (FDR) accounts for testing many functions.",
+              "A small FDR does not by itself indicate a large or biologically important change; inspect the effect size and abundance pattern."
             )
           ),
           analysis_help_block(
-            "Good practice for interpretation",
+            "How to read the figures",
             list(
-              "Look for consistent patterns across multiple plots instead of relying on one result.",
-              "Always interpret statistics together with effect size, group separation, and sample size.",
-              "Be careful when groups have very different numbers of samples.",
-              "A statistically significant result does not always mean a biologically large effect.",
-              "Taxonomic labels can be incomplete; an 'Unassigned' label does not necessarily mean the feature is unimportant."
+              "PCA: each point is a sample; nearby points have similar overall predicted functional profiles. Separation suggests group-level functional differences, but PCA is exploratory.",
+              "Errorbar plot: compares selected functions across groups. Larger separation and intervals that overlap less suggest stronger differences; use the table for exact statistics.",
+              "Heatmap: shows abundance patterns for the top DAA-ranked functions across samples. Similar colors indicate similar relative abundance, not statistical significance by themselves.",
+              "The table is the primary statistical output. Use feature IDs, descriptions, group comparisons, effect sizes, p-values, and adjusted p-values together."
             )
-          )
+          ),
         ),
         tabPanel(
           "Data summary",
@@ -566,11 +528,10 @@ app_ui <- fluidPage(
           analysis_help_block(
             "What this tab shows",
             list(
-              "The total number of samples and taxa in the current dataset.",
-              "The total number of reads after filtering.",
-              "The taxonomic ranks available in your taxonomy table.",
-              "A preview of your sample metadata, which is used to color or group many of the plots.",
-              "A taxonomy preview table with Taxon/taxonomy and Confidence columns when available (for QIIME2 and compatible inputs)."
+              "The number of samples and predicted functional features loaded from the PICRUSt2 table.",
+              "The total predicted abundance across all loaded samples and functions.",
+              "A preview of the sample metadata used to define groups and contrasts.",
+              "A preview of the PICRUSt2 feature IDs used in the analysis."
             )
           ),
           verbatimTextOutput("summary_text"),
@@ -579,9 +540,9 @@ app_ui <- fluidPage(
           downloadButton("download_sample_table", "Download sample table"),
           tags$br(),
           tags$br(),
-          tags$h4("Taxonomy preview (includes Taxon and Confidence when available)"),
+          tags$h4("PICRUSt2 feature preview"),
           tableOutput("taxonomy_table"),
-          downloadButton("download_taxonomy_table", "Download taxonomy table")
+          downloadButton("download_taxonomy_table", "Download PICRUSt2 feature table")
         ),
         # tabPanel(
         #   "Differential abundance",
@@ -622,7 +583,6 @@ app_ui <- fluidPage(
               "The table shows annotated differential results, and plots show effect patterns and clustering."
             )
           ),
-          fileInput("picrust_file", "PICRUSt2 abundance table (txt/tsv)", accept = c(".txt", ".tsv")),
           uiOutput("picrust_group_var_ui"),
           uiOutput("picrust_reference_ui"),
           uiOutput("picrust_contrast_ui"),
@@ -694,71 +654,38 @@ app_ui <- fluidPage(
 app_server <- function(input, output, session) {
   get_inputs <- reactive({
     if (isTRUE(input$use_defaults)) {
-      if (identical(input$data_mode, "csv")) {
-        required_defaults <- unlist(default_paths[c("otu", "tax", "meta")])
-        missing_defaults <- names(required_defaults)[!file.exists(required_defaults)]
-        if (length(missing_defaults) > 0) {
-          stop(sprintf("Default files missing for CSV mode: %s", paste(missing_defaults, collapse = ", ")))
-        }
-        return(list(mode = "csv", otu = default_paths$otu, tax = default_paths$tax, meta = default_paths$meta))
+      required_defaults <- unlist(default_paths[c("picrust", "meta")])
+      missing_defaults <- names(required_defaults)[!file.exists(required_defaults)]
+      if (length(missing_defaults) > 0) {
+        stop(sprintf("Default files missing: %s", paste(missing_defaults, collapse = ", ")))
       }
-
-      if (!file.exists(default_paths$biom)) {
-        stop("Default BIOM file missing: centrifuge_reports.biom")
-      }
-
-      biom_meta_path <- if (file.exists(default_paths$meta)) default_paths$meta else ""
-      return(list(mode = "biom", biom = default_paths$biom, biom_meta = biom_meta_path))
+      return(list(picrust = default_paths$picrust, meta = default_paths$meta))
     }
 
-    if (identical(input$data_mode, "csv")) {
-      req(input$otu_file, input$tax_file, input$meta_file)
-      return(list(mode = "csv", otu = input$otu_file$datapath, tax = input$tax_file$datapath, meta = input$meta_file$datapath))
-    }
-
-    if (identical(input$data_mode, "qiime2")) {
-      req(input$qiime2_feature_file, input$qiime2_meta_file)
-      return(list(mode = "qiime2", feature = input$qiime2_feature_file$datapath, meta = input$qiime2_meta_file$datapath))
-    }
-
-    req(input$biom_file)
-    list(
-      mode = "biom",
-      biom = input$biom_file$datapath,
-      biom_meta = if (!is.null(input$biom_meta_file)) input$biom_meta_file$datapath else ""
-    )
+    req(input$picrust_file, input$meta_file)
+    list(picrust = input$picrust_file$datapath, meta = input$meta_file$datapath)
   })
 
   ps_obj <- eventReactive(input$load_data, {
     data_inputs <- get_inputs()
-    if (identical(data_inputs$mode, "csv")) {
-      return(
-        build_phyloseq_from_csv(
-          otu_path = data_inputs$otu,
-          tax_path = data_inputs$tax,
-          meta_path = data_inputs$meta,
-          assay_type = input$assay_type,
-          keep_kingdom = input$keep_kingdom
-        )
-      )
+    abundance <- read_picrust_abundance(data_inputs$picrust)
+    meta <- read.csv(data_inputs$meta, check.names = FALSE, stringsAsFactors = FALSE)
+    if (ncol(meta) < 2) {
+      stop("Metadata must include a sample ID column plus at least one metadata column.")
     }
-
-    if (identical(data_inputs$mode, "qiime2")) {
-      return(
-        build_phyloseq_from_qiime2(
-          feature_path = data_inputs$feature,
-          meta_path = data_inputs$meta,
-          assay_type = input$assay_type,
-          keep_kingdom = input$keep_kingdom
-        )
-      )
+    rownames(meta) <- as.character(meta[[1]])
+    meta <- meta[, -1, drop = FALSE]
+    common_samples <- intersect(colnames(abundance), rownames(meta))
+    if (length(common_samples) < 2) {
+      stop("Fewer than 2 overlapping sample IDs between PICRUSt2 table and metadata.")
     }
-
-    build_phyloseq_from_biom(
-      biom_path = data_inputs$biom,
-      meta_path = data_inputs$biom_meta,
-      assay_type = input$assay_type,
-      keep_kingdom = input$keep_kingdom
+    abundance <- abundance[, common_samples, drop = FALSE]
+    meta <- meta[common_samples, , drop = FALSE]
+    tax <- matrix(rownames(abundance), ncol = 1, dimnames = list(rownames(abundance), "FeatureID"))
+    phyloseq(
+      otu_table(abundance, taxa_are_rows = TRUE),
+      tax_table(tax),
+      sample_data(meta)
     )
   }, ignoreInit = FALSE)
 
@@ -1090,13 +1017,12 @@ app_server <- function(input, output, session) {
 
   output$summary_text <- renderPrint({
     ps <- ps_obj()
-    cat("Amplicon object loaded successfully\n")
+    cat("PICRUSt2 functional profile loaded successfully\n")
     cat(sprintf("Samples: %d\n", nsamples(ps)))
-    cat(sprintf("Taxa: %d\n", ntaxa(ps)))
-    cat(sprintf("Assay type: %s\n", unique(sample_data(ps)$AssayType)))
-    cat(sprintf("Total reads: %s\n", format(sum(sample_sums(ps)), big.mark = ",")))
-    cat("\nTaxonomic ranks:\n")
-    print(rank_names(ps))
+    cat(sprintf("Predicted functions: %d\n", ntaxa(ps)))
+    cat(sprintf("Total predicted abundance: %s\n", format(sum(sample_sums(ps)), big.mark = ",")))
+    cat("\nMetadata columns:\n")
+    print(colnames(as(sample_data(ps), "data.frame")))
   })
 
   output$sample_table <- renderTable({
@@ -1543,7 +1469,7 @@ app_server <- function(input, output, session) {
     }
 
     if (is.null(input$run_picrust) || input$run_picrust < 1) {
-      cat("Ready. Upload a PICRUSt2 table in the ggpicrust2 tab and click Run ggpicrust2.\n")
+      cat("Ready. Upload a PICRUSt2 table and metadata on the Guide tab, then click Run ggpicrust2.\n")
       return(invisible(NULL))
     }
 

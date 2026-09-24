@@ -3,3 +3,5 @@ data/
 .Rproj.user
 functional_profiler/data/.DS_Store
 functional_profiler/.DS_Store
+.Rhistory
+functional_profiler/.Rhistory

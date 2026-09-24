@@ -13,11 +13,9 @@ shiny::runApp()
 ## Analyses Available
 
 ### Data Summary
-- Total samples and taxa in phyloseq object
-- Total sequencing reads
-- Available taxonomic ranks
+- Total samples and PICRUSt2 features
 - Sample metadata preview
-- Taxonomy information
+- PICRUSt2 feature ID preview
 
 ### Functional Profiler (ggpicrust2)
 - Analyzes metabolic/functional pathways from PICRUSt2 predictions
@@ -35,29 +33,24 @@ shiny::runApp()
   - KO-to-KEGG pathway annotation
 - **Output**: Annotated results table + publication-ready plots
 
-## Sidebar Controls
+## Input Controls
 
-- **Assay type**: 16S or ITS data
-- **Kingdom filter**: All, Bacteria, or Fungi  
-- **Input mode**:
-  - CSV tables
-  - BIOM file
-  - QIIME2 feature table
-- **Use defaults**: Optional; loads pre-configured files when selected
+- **PICRUSt2 abundance table**: `pred_metagenome_unstrat_descrip.tsv` or similar
+- **Sample metadata**: CSV with a sample ID column and grouping variables
+- **Use defaults**: Optional; loads the workspace default PICRUSt2 table and metadata
 - **Maximum features for analysis**: Defaults to 2,000 to limit memory use
 - **Top features for errorbar and heatmap**: Defaults to 10 DAA-ranked features
 
 ## Step-by-Step Workflow
 
-### 1. Load Count Data
-1. Choose input mode (CSV, BIOM, or QIIME2)
-2. Upload OTU/taxonomy/metadata files
-3. Click "Load / Reload data"
-4. Check Data Summary tab for row/column counts
+### 1. Load PICRUSt2 Data
+1. On the Guide tab, upload the PICRUSt2 abundance table and sample metadata
+2. Click "Load / Reload data"
+3. Check the Data summary tab for sample and feature counts
 
 ### 2. ggpicrust2 Analysis
-1. Go to "Functional Profiler" tab
-2. Upload PICRUSt2 abundance table (pred_metagenome_unstrat_descrip.tsv or similar)
+1. Go to the "ggpicrust2" tab
+2. Confirm the PICRUSt2 abundance table and metadata were loaded on the Guide tab
 3. Select grouping variable (same metadata column)
 4. (Optional) Select reference level
 5. Choose pathway type: KO (default), MetaCyc, or EC
@@ -66,29 +59,14 @@ shiny::runApp()
 8. (Optional) Enable KO-to-KEGG conversion for KEGG pathway names
 9. Set the maximum analysis features and the number of plotted top features
 10. Click "Run ggpicrust2"
-9. Review results:
+11. Review results:
    - Table shows annotated differential results
-   - Errorbar plot shows significant pathways with effect size
-   - PCA shows functional profile separation
-   - Heatmap shows significant pathway abundance patterns
-10. Download desired tables/plots
+  - Errorbar plot compares selected functions across groups
+  - PCA shows similarity and separation among sample functional profiles
+  - Heatmap shows abundance patterns for top DAA-ranked functions
+12. Download desired tables/plots
 
 ## Data Format Requirements
-
-### OTU Table (CSV)
-```
-,Sample1,Sample2,Sample3
-OTU1,100,50,75
-OTU2,200,150,100
-```
-- First column = feature IDs
-- Other columns = samples
-- Values = integer counts
-
-### Taxonomy Table (CSV)
-- First column = feature IDs (matching OTU table)
-- Other columns = Kingdom, Phylum, Class, Order, Family, Genus, Species
-- Can include Taxon and Confidence columns for QIIME2 data
 
 ### Sample Metadata (CSV)
 ```
@@ -97,8 +75,8 @@ Sample1,Gut,Antibiotic,Day1
 Sample2,Gut,Placebo,Day1
 Sample3,Gut,Antibiotic,Day7
 ```
-- First column = sample IDs (matching OTU table)
-- Other columns = grouping variables, continuous variables, etc.
+- First column = sample IDs matching the PICRUSt2 sample columns
+- Other columns = grouping variables and other sample annotations
 
 ### PICRUSt2 Abundance Table (TSV/TXT)
 **Example structure**:
@@ -124,35 +102,32 @@ qiime picrust2 full-pipeline ...
 ### ggpicrust2 Results
 
 #### Errorbar Plot
-- X-axis: Pathway name or ID
-- Y-axis: Group
-- Error bars: 95% confidence interval
-- Color: Effect direction and magnitude
-- **Look for**: Non-overlapping error bars between groups
+- Compares the selected top functions across metadata groups.
+- The point and interval summarize the estimated group-level effect and uncertainty.
+- Larger separation and less overlap suggest stronger differences, but exact significance comes from the results table.
 
 #### PCA Plot
-- Each point = one sample
-- Closeness = functional profile similarity
-- Separation = distinct functional profiles between groups
+- Each point represents one sample based on its complete predicted functional profile.
+- Nearby points have similar profiles; separated points have more dissimilar profiles.
+- Group separation is exploratory and should be checked against the DAA statistics.
 
 #### Heatmap
-- Rows: Selected top DAA-ranked pathways
-- Columns: Samples
-- Color intensity: Abundance
-- Hierarchical clustering groups similar samples/pathways
+- Rows are the top DAA-ranked functions and columns are samples.
+- Color intensity represents abundance after the plotting transformation.
+- Clustering groups samples or functions with similar abundance patterns.
+- A visible pattern is not, by itself, evidence of statistical significance.
 
 #### Statistical Table
-- Feature/Pathway ID
-- Group1/Group2: Abundance in each group
-- log2FoldChange: Effect size
-- p_value, p_adjust: Statistical significance
-- Description: Pathway annotation (if available)
+- Feature or pathway ID and description
+- Group comparisons and estimated effect size
+- Raw p-value and BH-adjusted p-value (FDR)
+- Interpret FDR together with effect size, replication, and the plots
 
 ## Key Concepts
 
-**Differential Abundance Analysis (DAA)**: Testing whether predicted pathways differ in abundance between groups
+**Differential Abundance Analysis (DAA)**: Testing whether predicted functions differ in abundance between groups.
 
-**DAA (Differential Abundance Analysis)**: Statistical method for this test
+**Adjusted p-value (FDR)**: A multiple-testing-adjusted measure of evidence. It helps control false discoveries when many functions are tested.
 
 **ggpicrust2**: Applies DAA methods to functional pathways
 
@@ -161,7 +136,7 @@ qiime picrust2 full-pipeline ...
 **PICRUSt2**: "Prediction of Metabolic Intermediate Genes by Functional Tools"
 - Predicts metabolic genes/pathways from 16S/ITS data
 
-**Fold-Change**: Ratio of abundances between groups
+**Effect size**: The estimated magnitude and direction of the difference between groups. Statistical significance and effect size answer different questions.
 
 ## Troubleshooting
 

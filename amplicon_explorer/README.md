@@ -1,6 +1,6 @@
 # Amplicon Explorer: 16S / ITS Analysis App
 
-**Exploratory microbiome analysis focused on taxonomic diversity and community structure**
+**Exploratory amplicon analysis focused on diversity, community structure, and taxonomy**
 
 ## Launch
 
@@ -13,13 +13,12 @@ shiny::runApp()
 ## Analyses Available
 
 ### Guide Tab
-- How to use this app
-- Recommended analysis workflow
-- Important concepts explained
-- Good practices for interpretation
+- Current workflow for count tables, taxonomy, and metadata
+- Explanation of each analysis and figure
+- Guidance for interpreting effect size, replication, and p-values
 
 ### Data Summary
-- Total samples and taxa in dataset
+- Total samples and features in dataset
 - Total sequencing reads
 - Available taxonomic ranks
 - Sample metadata preview
@@ -30,39 +29,40 @@ shiny::runApp()
 - **Shannon**: Accounts for both richness and evenness
 - **Simpson**: Emphasizes dominant taxa
 - Box plots + individual points per sample
-- Tests whether within-sample diversity differs between groups
+- Helps compare within-sample diversity between groups; it does not identify which taxa cause a difference
 
 ### Beta Ordination
 - **NMDS** (default) or **PCoA**
 - **Bray-Curtis**: Uses abundance
 - **Jaccard**: Presence/absence only
 - **Euclidean**: Standard distance
-- Visualizes community similarity between samples
+- Visualizes community similarity between samples; axis values are not individual taxa or direct abundance values
 
 ### Taxa Composition
 - Stacked bar charts
 - Colors = taxa at chosen rank (Phylum, Genus, etc.)
 - Top N taxa shown; others grouped as "Other"
 - Faceting by second grouping variable available
-- Great for spotting dominant taxa and group patterns
+- Useful for spotting dominant taxa and broad relative-abundance patterns, not absolute abundance
 
 ### Clustering
 - UPGMA dendrograms
 - Shows hierarchical similarity between samples
 - Samples joining low = more similar
-- Helps identify natural groupings or outliers
+- Helps identify sample groupings or outliers; results depend on distance and linkage choices
 
 ### PERMANOVA
 - Tests overall community composition differences
 - R² = fraction of variance explained by grouping
-- p-value = evidence against null hypothesis
-- Complement with ordination plots for interpretation
+- p-value = evidence against the permutation null model
+- Interpret R2 as explained variation, not classification accuracy
+- Complement with ordination plots and checks for unequal within-group dispersion
 
 ### Core Microbiome
 - Taxa found across many samples (prevalence filter)
 - Heatmap shows which core taxa appear where
 - Adjustable abundance threshold
-- Useful for identifying "keystone" taxa
+- Does not prove that a taxon is biologically essential or a "keystone" taxon
 
 ## Sidebar Controls
 
@@ -126,31 +126,35 @@ Sample3,Skin,Placebo,5
 ### Alpha Diversity
 - High Shannon = many taxa, evenly distributed
 - Low Shannon = few taxa or one dominates
-- Compare boxplot shapes across groups
+- Compare group medians, spread, individual points, and sample sizes
 
 ### Beta Ordination
 - Tight clusters = homogeneous communities
 - Separate clouds = distinct community types
-- Overlap = communities share composition
+- Overlap = communities share composition or within-group variation is high
+- Use PERMANOVA to test group differences; do not infer significance from visual separation alone
 
 ### Taxa Composition
 - Look for consistent patterns across replicates
-- Sudden shifts suggest important drivers
-- Rare taxa in "Other" category = not worth highlighting
+- Shifts suggest differences worth investigating, but do not identify a causal driver
+- Rare taxa grouped as "Other" remain part of the total relative abundance
 
 ### PERMANOVA + Ordination
-- **PERMANOVA p < 0.05 + clear separation** = strong evidence
-- **PERMANOVA p < 0.05 + high overlap** = significant but small effect
-- **PERMANOVA p > 0.05 + clear separation** = high variance within groups
+- **Small p-value + meaningful R2 + consistent separation** = stronger evidence of a group-associated community difference
+- **Small p-value + low R2** = statistically detectable but potentially modest effect
+- **Visual separation without a small p-value** = exploratory pattern requiring more replication or a closer look at within-group variation
+- **Different within-group spread** = interpret PERMANOVA cautiously because dispersion can influence the result
 
 ### Core Microbiome
-- Taxa appearing across most samples = "true core"
-- Taxa in few samples = environment-specific
-- Combine with abundance threshold to find keystone taxa
+- Taxa appearing across most samples meet the selected prevalence definition of core
+- Taxa in fewer samples may be condition-specific or low-prevalence
+- Combine prevalence with the abundance threshold and inspect the underlying table
 
 ## Key Concepts
 
-**Taxon**: A biological group (Phylum, Genus, Species, etc.)
+**Feature**: An OTU or ASV counted in the input table
+
+**Taxon**: A biological group assigned to one or more features (Phylum, Genus, Species, etc.)
 
 **Relative Abundance**: Proportions within each sample; allows comparison despite different sequencing depths
 
@@ -158,9 +162,9 @@ Sample3,Skin,Placebo,5
 
 **Beta Diversity**: Diversity BETWEEN samples (community differences)
 
-**Ordination**: 2D plot arranging similar samples close together
+**Ordination**: A 2D representation of sample-to-sample distances; proximity is meaningful, while axis values are usually not directly interpretable
 
-**OTU/ASV**: Operational Taxonomic Unit / Amplicon Sequence Variant (the unit being counted)
+**OTU/ASV**: Operational Taxonomic Unit / Amplicon Sequence Variant, the feature being counted
 
 **Taxonomy**: Classification of each OTU/ASV
 
@@ -201,4 +205,4 @@ This app uses:
 
 ---
 
-**Last Updated**: April 2026
+**Last Updated**: September 2026
