@@ -74,6 +74,15 @@ it from this directory with `rsconnect::writeManifest()`. Redeploy the updated
 manifest and app together. If an analysis still fails on Connect Cloud, check
 the app's runtime logs for the underlying error.
 
+For GitHub deployments, select `functional_profiler/app.R` as the entry point.
+Connect Cloud uses `manifest.json` in preference to `renv.lock` when both are
+present. Keep their package versions aligned: both pin `RcppParallel` to
+`5.1.11-1`, which worked with the provided `Rfast` binary on Connect Cloud.
+Using `RcppParallel` 6.1.1 instead caused ALDEx2 installation to fail with
+`undefined symbol: _ZTIN3tbb4taskE`. Check this pin after regenerating the
+manifest, and commit and push the updated dependency files before redeploying
+from GitHub.
+
 ## Data Format Requirements
 
 ### Sample Metadata (CSV)

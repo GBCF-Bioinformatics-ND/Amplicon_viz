@@ -695,25 +695,24 @@
         "Package": "RcppParallel",
         "Type": "Package",
         "Title": "Parallel Programming Tools for 'Rcpp'",
-        "Version": "6.1.1",
-        "Authors@R": "c(\n    person(\"Kevin\", \"Ushey\", role = c(\"aut\", \"cre\"), email = \"kevin@rstudio.com\",\n        comment = c(ORCID = \"0000-0003-2880-7407\")),\n    person(\"JJ\", \"Allaire\", role = c(\"aut\"), email = \"jj@rstudio.com\"),\n    person(\"Romain\", \"Francois\", role = c(\"aut\", \"cph\")),\n    person(\"Gregory\", \"Vandenbrouck\", role = \"aut\"),\n    person(\"Marcus\", \"Geelnard\", role = c(\"aut\", \"cph\"),\n       comment = \"TinyThread library, https://tinythreadpp.bitsnbites.eu/\"),\n    person(\"Hamada S.\", \"Badr\", email = \"badr@jhu.edu\", role = c(\"ctb\"),\n       comment = c(ORCID = \"0000-0002-9808-2344\")),\n    person(\"Dirk\", \"Eddelbuettel\", role = c(\"aut\"), email = \"edd@debian.org\",\n        comment = c(ORCID = \"0000-0001-6419-907X\")),\n    person(family = \"Intel\", role = c(\"aut\", \"cph\"), comment = \"oneTBB library\"),\n    person(family = \"UXL Foundation\", role = c(\"aut\", \"cph\"), comment = \"oneTBB library\"),\n    person(family = \"Microsoft\", role = \"cph\"),\n    person(family = \"Posit, PBC\", role = \"cph\")\n    )",
-        "Description": "High level functions for parallel programming with 'Rcpp'.\n    For example, the 'parallelFor()' function can be used to convert the work of\n    a standard serial \"for\" loop into a parallel one and the 'parallelReduce()'\n    function can be used for accumulating aggregate or other values.",
-        "Depends": "R (>= 3.6.0)",
-        "Suggests": "Rcpp, knitr, rmarkdown",
-        "SystemRequirements": "CMake (>= 3.5)",
+        "Version": "5.1.11-1",
+        "Authors@R": "c(\nperson(\"JJ\", \"Allaire\", role = c(\"aut\"), email = \"jj@rstudio.com\"),\nperson(\"Romain\", \"Francois\", role = c(\"aut\", \"cph\")),\nperson(\"Kevin\", \"Ushey\", role = c(\"aut\", \"cre\"), email = \"kevin@rstudio.com\"),\nperson(\"Gregory\", \"Vandenbrouck\", role = \"aut\"),\nperson(\"Marcus\", \"Geelnard\", role = c(\"aut\", \"cph\"),\ncomment = \"TinyThread library, https://tinythreadpp.bitsnbites.eu/\"),\nperson(\"Hamada S.\", \"Badr\",\nemail = \"badr@jhu.edu\",\nrole = c(\"ctb\"),\ncomment = c(ORCID = \"0000-0002-9808-2344\")),\nperson(family = \"Posit, PBC\", role = \"cph\"),\nperson(family = \"Intel\", role = c(\"aut\", \"cph\"),\ncomment = \"Intel TBB library, https://www.threadingbuildingblocks.org/\"),\nperson(family = \"Microsoft\", role = \"cph\")\n)",
+        "Description": "High level functions for parallel programming with 'Rcpp'.\nFor example, the 'parallelFor()' function can be used to convert the work of\na standard serial \"for\" loop into a parallel one and the 'parallelReduce()'\nfunction can be used for accumulating aggregate or other values.",
+        "Depends": "R (>= 3.0.2)",
+        "Suggests": "Rcpp, RUnit, knitr, rmarkdown",
+        "SystemRequirements": "GNU make, Intel TBB, Windows: cmd.exe and\ncscript.exe, Solaris: g++ is required",
         "License": "GPL (>= 3)",
         "URL": "https://rcppcore.github.io/RcppParallel/,\nhttps://github.com/RcppCore/RcppParallel",
         "BugReports": "https://github.com/RcppCore/RcppParallel/issues",
         "Biarch": "TRUE",
-        "RoxygenNote": "7.3.3",
+        "RoxygenNote": "7.1.1",
         "Encoding": "UTF-8",
         "NeedsCompilation": "yes",
-        "Packaged": "2026-07-26 22:27:57 UTC; kevin",
-        "Author": "Kevin Ushey [aut, cre] (ORCID: <https://orcid.org/0000-0003-2880-7407>),\n  JJ Allaire [aut],\n  Romain Francois [aut, cph],\n  Gregory Vandenbrouck [aut],\n  Marcus Geelnard [aut, cph] (TinyThread library,\n    https://tinythreadpp.bitsnbites.eu/),\n  Hamada S. Badr [ctb] (ORCID: <https://orcid.org/0000-0002-9808-2344>),\n  Dirk Eddelbuettel [aut] (ORCID:\n    <https://orcid.org/0000-0001-6419-907X>),\n  Intel [aut, cph] (oneTBB library),\n  UXL Foundation [aut, cph] (oneTBB library),\n  Microsoft [cph],\n  Posit, PBC [cph]",
+        "Packaged": "2025-08-27 01:05:44 UTC; kevin",
+        "Author": "JJ Allaire [aut],\nRomain Francois [aut, cph],\nKevin Ushey [aut, cre],\nGregory Vandenbrouck [aut],\nMarcus Geelnard [aut, cph] (TinyThread library,\nhttps://tinythreadpp.bitsnbites.eu/),\nHamada S. Badr [ctb] (ORCID: <https://orcid.org/0000-0002-9808-2344>),\nPosit, PBC [cph],\nIntel [aut, cph] (Intel TBB library,\nhttps://www.threadingbuildingblocks.org/),\nMicrosoft [cph]",
         "Maintainer": "Kevin Ushey <kevin@rstudio.com>",
         "Repository": "CRAN",
-        "Date/Publication": "2026-07-27 15:30:02 UTC",
-        "Built": "R 4.5.2; aarch64-apple-darwin20; 2026-07-27 16:08:06 UTC; unix"
+        "Date/Publication": "2025-08-27 07:30:10 UTC"
       }
     },
     "Rdpack": {
@@ -5654,7 +5653,7 @@
       "checksum": "107b3c62d0684c23eedf3f7e6f81719b"
     },
     "README.md": {
-      "checksum": "bab4fb9ffd03ab9884e818b7e2e52523"
+      "checksum": "694f090a9663a2035c679d42081ec406"
     }
   },
   "users": null
