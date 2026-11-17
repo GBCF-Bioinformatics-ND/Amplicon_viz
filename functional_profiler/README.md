@@ -24,7 +24,7 @@ shiny::runApp()
   - **MetaCyc**: Metabolic pathways
   - **EC** (Enzyme Commission): Enzyme functions
 - **DAA Methods** (pathway-level differential abundance analysis):
-  - LinDA (default, conservative)
+  - LinDA (conservative)
   - ALDEx2 (compositional data specialist)
   - edgeR (default; RNA-seq inspired)
 - **Features**:
@@ -54,17 +54,25 @@ shiny::runApp()
 3. Select grouping variable (same metadata column)
 4. (Optional) Select reference level
 5. Choose pathway type: KO (default), MetaCyc, or EC
-6. Choose DAA method (default: LinDA)
-7. Choose a DAA method; `edgeR` is selected by default
-8. (Optional) Enable KO-to-KEGG conversion for KEGG pathway names
-9. Set the maximum analysis features and the number of plotted top features
-10. Click "Run ggpicrust2"
-11. Review results:
+6. Choose a DAA method; `edgeR` is selected by default
+7. (Optional) Enable KO-to-KEGG conversion for KEGG pathway names
+8. Set the maximum analysis features and the number of plotted top features
+9. Click "Run ggpicrust2"
+10. Review results:
    - Table shows annotated differential results
   - Errorbar plot compares selected functions across groups
   - PCA shows similarity and separation among sample functional profiles
   - Heatmap shows abundance patterns for top DAA-ranked functions
-12. Download desired tables/plots
+11. Download desired tables/plots
+
+## Deployment dependencies
+
+The DAA methods require `edgeR`, `ALDEx2`, and `MicrobiomeStat`, respectively.
+The errorbar plot also requires `GGally`.
+Install these packages before generating the deployment manifest, then regenerate
+it from this directory with `rsconnect::writeManifest()`. Redeploy the updated
+manifest and app together. If an analysis still fails on Connect Cloud, check
+the app's runtime logs for the underlying error.
 
 ## Data Format Requirements
 

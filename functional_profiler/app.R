@@ -1080,6 +1080,16 @@ app_server <- function(input, output, session) {
       stop("Package ggpicrust2 is not installed. Install with install.packages('ggpicrust2').")
     }
 
+    if (identical(input$picrust_daa_method, "edgeR") && !requireNamespace("edgeR", quietly = TRUE)) {
+      stop("The edgeR DAA method requires the Bioconductor package edgeR.")
+    }
+    if (identical(input$picrust_daa_method, "ALDEx2") && !requireNamespace("ALDEx2", quietly = TRUE)) {
+      stop("The ALDEx2 DAA method requires the Bioconductor package ALDEx2.")
+    }
+    if (identical(input$picrust_daa_method, "LinDA") && !requireNamespace("MicrobiomeStat", quietly = TRUE)) {
+      stop("The LinDA DAA method requires the MicrobiomeStat package.")
+    }
+
     ko_ref_cache_used <- tryCatch(
       {
         ensure_ko_reference_loaded()
@@ -1363,6 +1373,9 @@ app_server <- function(input, output, session) {
 
     errorbar_plot <- tryCatch(
       {
+        if (!requireNamespace("GGally", quietly = TRUE)) {
+          stop("The errorbar plot requires the GGally package.")
+        }
         ggpicrust2::pathway_errorbar(
           abundance = analysis_abundance[plot_features, , drop = FALSE],
           daa_results_df = plot_results_top,
